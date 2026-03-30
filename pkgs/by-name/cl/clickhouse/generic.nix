@@ -156,6 +156,11 @@ llvmStdenv.mkDerivation (finalAttrs: {
       --replace-fail 'gfind' 'find' \
       --replace-fail 'ggrep' 'grep'
   ''
+  + lib.optionalString stdenv.hostPlatform.isBigEndian ''
+    # ICU bundled data tables default to little-endian
+    substituteInPlace contrib/icu/icu4c/source/common/unicode/platform.h \
+      --replace-fail "U_IS_BIG_ENDIAN 0" "U_IS_BIG_ENDIAN 1" || true
+  ''
   # Rust is handled by cmake
   + lib.optionalString rustSupport ''
     cargoSetupPostPatchHook() { true; }
@@ -200,7 +205,14 @@ llvmStdenv.mkDerivation (finalAttrs: {
   ]
   ++ lib.optional (
     stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isAarch64
-  ) "-DNO_ARMV81_OR_HIGHER=1";
+  ) "-DNO_ARMV81_OR_HIGHER=1"
+  ++ lib.optionals stdenv.hostPlatform.isS390x [
+    "-DNO_SSE3_OR_HIGHER=1"
+    "-DNO_AVX_OR_HIGHER=1"
+    "-DNO_AVX256_OR_HIGHER=1"
+    "-DNO_AVX512_OR_HIGHER=1"
+    "-DENABLE_GRPC_USE_OPENSSL=1"
+  ];
 
   env = {
     CARGO_HOME = "$PWD/../.cargo/";
@@ -269,7 +281,8 @@ llvmStdenv.mkDerivation (finalAttrs: {
     platforms = lib.filter (x: (lib.systems.elaborate x).is64bit) (
       lib.platforms.linux ++ lib.platforms.darwin
     );
-    broken = stdenv.buildPlatform != stdenv.hostPlatform;
+    broken = stdenv.buildPlatform != stdenv.hostPlatform
+      && !stdenv.hostPlatform.isS390x;
 
     maintainers = with lib.maintainers; [
       thevar1able
