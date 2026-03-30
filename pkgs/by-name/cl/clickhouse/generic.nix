@@ -108,8 +108,10 @@ llvmStdenv.mkDerivation (finalAttrs: {
     nasm
     yasm
   ]
-  ++ lib.optionals stdenv.hostPlatform.isDarwin [
+  ++ lib.optionals (stdenv.hostPlatform.isDarwin || stdenv.buildPlatform != stdenv.hostPlatform) [
     llvmPackages.bintools
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isDarwin [
     findutils
     darwin.bootstrap_cmds
   ]
@@ -161,6 +163,16 @@ llvmStdenv.mkDerivation (finalAttrs: {
     substituteInPlace contrib/icu/icu4c/source/common/unicode/platform.h \
       --replace-fail "U_IS_BIG_ENDIAN 0" "U_IS_BIG_ENDIAN 1" || true
   ''
+  + lib.optionalString (stdenv.buildPlatform != stdenv.hostPlatform) (
+    let
+      builtinsLib = "${stdenv.cc}/resource-root/lib/linux/libclang_rt.builtins-${stdenv.hostPlatform.parsed.cpu.name}.a";
+    in ''
+    # For cross-compilation, use the system compiler-rt builtins directly.
+    # ClickHouse's embedded compiler-rt build fails because Nix's cc-wrapper
+    # sets CMAKE_CXX_COMPILER_TARGET to the build platform, not the host.
+    sed -i 's|include (cmake/build_clang_builtin.cmake)|# Patched: use system compiler-rt|' cmake/linux/default_libs.cmake
+    sed -i "s|build_clang_builtin.*BUILTINS_LIBRARY.*|set(BUILTINS_LIBRARY \"${builtinsLib}\")|" cmake/linux/default_libs.cmake
+  '')
   # Rust is handled by cmake
   + lib.optionalString rustSupport ''
     cargoSetupPostPatchHook() { true; }
@@ -212,6 +224,15 @@ llvmStdenv.mkDerivation (finalAttrs: {
     "-DNO_AVX256_OR_HIGHER=1"
     "-DNO_AVX512_OR_HIGHER=1"
     "-DENABLE_GRPC_USE_OPENSSL=1"
+    "-DENABLE_ISAL_LIBRARY=OFF"
+    "-DENABLE_HDFS=OFF"
+  ]
+  ++ lib.optionals (stdenv.buildPlatform != stdenv.hostPlatform) [
+    "-DOBJCOPY_PATH=${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}objcopy"
+    "-DSTRIP_PATH=${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}strip"
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isS390x [
+    "-DCMAKE_TOOLCHAIN_FILE=cmake/linux/toolchain-s390x.cmake"
   ];
 
   env = {
