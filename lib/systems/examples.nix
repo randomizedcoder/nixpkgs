@@ -245,6 +245,12 @@ rec {
 
   s390x = {
     config = "s390x-unknown-linux-gnu";
+    gcc = {
+      # z13 (2015) is the minimum for vector extensions (SIMD).
+      # All currently supported IBM Z hardware is z13 or newer.
+      # Enables: -mvx -mzvector (vector facility)
+      arch = "z13";
+    };
   };
 
   arm-embedded = {

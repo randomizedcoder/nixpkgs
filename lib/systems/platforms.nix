@@ -594,6 +594,16 @@ rec {
     };
   };
 
+  s390x-multiplatform = {
+    linux-kernel = {
+      name = "s390x-multiplatform";
+      target = "bzImage";
+      autoModules = true;
+      preferBuiltin = true;
+      baseConfig = "defconfig";
+    };
+  };
+
   # This function takes a minimally-valid "platform" and returns an
   # attrset containing zero or more additional attrs which should be
   # included in the platform in order to further elaborate it.
@@ -631,6 +641,9 @@ rec {
 
     else if platform.isPower64 then
       if platform.isLittleEndian then powernv else ppc64
+
+    else if platform.isS390x then
+      s390x-multiplatform
 
     else
       { };
