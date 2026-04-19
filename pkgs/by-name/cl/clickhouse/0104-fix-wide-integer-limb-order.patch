@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nix-on-z <nix-on-z@s390x>
+Date: Fri, 17 Apr 2026 00:00:00 +0000
+Subject: [PATCH] Fix wide_integer tuple construction limb order on big-endian
+
+wide_integer_from_tuple_like stores tuple element i into items[i], but
+the canonical storage layout indexes limbs low-to-high via little(i):
+  little(i) = i                         (on little-endian)
+  little(i) = item_count - 1 - i        (on big-endian)
+
+On little-endian these coincide, so the bug is invisible. On big-endian
+it stores tuple[0] (intended as the lowest limb) into items[0], which
+is the HIGHEST position — the low/high halves of the wide integer get
+swapped.
+
+This shows up for any code that constructs a wide integer from a tuple
+or initializer_list longer than one element (Int128{low, high}, etc.).
+Symptom on s390x: Int128{1, 1} produced 2^64 + 1 instead of 2^64, and
+conversely. Note that the multi-element initializer_list path at lines
+1288–1299 already uses items[little(i)] — this patch aligns tuple_like
+with that correct pattern.
+
+The cityhash caller previously compensated by pre-swapping the pair on
+BE; with the function now correct, both endianness branches pass
+(low64, high64) and the branch can be collapsed.
+
+On little-endian: little(i) == i, so the generated code is unchanged.
+---
+--- a/base/base/wide_integer_impl.h
++++ b/base/base/wide_integer_impl.h
+@@ -387,9 +387,9 @@
+         if constexpr (i < item_count)
+         {
+             if constexpr (i < std::tuple_size_v<TupleLike>)
+-                self.items[i] = std::get<i>(tuple);
++                self.items[little(i)] = std::get<i>(tuple);
+             else
+-                self.items[i] = 0;
++                self.items[little(i)] = 0;
+             wide_integer_from_tuple_like<TupleLike, i + 1>(self, tuple);
+         }
+     }
+@@ -399,10 +399,9 @@
+     {
+         static_assert(sizeof(item_count) >= 2);
+
+-        if constexpr (std::endian::native == std::endian::little)
+-            wide_integer_from_tuple_like(self, std::make_pair(value.low64, value.high64));
+-        else
+-            wide_integer_from_tuple_like(self, std::make_pair(value.high64, value.low64));
++        /// Pass limbs in low-to-high order; wide_integer_from_tuple_like maps them
++        /// through little(i) so the BE/LE paths produce the same in-memory layout.
++        wide_integer_from_tuple_like(self, std::make_pair(value.low64, value.high64));
+     }
+
+     /**

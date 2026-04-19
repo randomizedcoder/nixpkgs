@@ -1,0 +1,296 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nix-on-z <nix-on-z@s390x>
+Date: Thu, 10 Apr 2026 00:00:00 +0000
+Subject: [PATCH] Fix Parquet native reader endianness for big-endian platforms
+
+Parquet format stores all multi-byte integers in little-endian byte order.
+The native Parquet reader (V3) uses memcpy and unalignedLoad to read these
+values, which produces native byte order -- correct on x86 (little-endian)
+but wrong on s390x (big-endian).
+
+Fix all sites to use explicit little-endian conversion via a fromLittleEndian()
+helper that compiles to a no-op on little-endian platforms:
+
+Reader.cpp (4 sites):
+- Footer metadata size (memcpy of 4-byte LE int32)
+- DATA_PAGE_V1 rep/def level byte lengths (2x memcpy of 4-byte LE uint32)
+- Bloom filter word reads (unalignedLoad of LE uint32)
+
+Decoding.cpp (21 sites):
+- RLE length prefix (memcpy of 4-byte LE uint32)
+- RLE run values (memcpy of variable-width LE int)
+- Bit-packed 8-byte reads (memcpy of LE uint64 for bit extraction)
+- String length prefixes (5x memcpy of 4-byte LE uint32)
+- Dictionary page string lengths (memcpy of 4-byte LE uint32)
+- Dictionary fixed-size index fast-path (raw memcpy of LE column values, v3)
+- memcpyIntoColumn plain fixed-size column data fast-path (v3)
+- Integer column conversion (memcpy of LE integers)
+- Integer statistics (unalignedLoad of LE uint16/32/64)
+- Float statistics (memcpy of LE float32/64)
+- Float16 conversion (memcpy of LE uint16)
+- INT96 timestamps (unalignedLoad of LE int64 + int32)
+- ByteStreamSplit 8-byte reads (unalignedLoad of LE uint64)
+
+On little-endian (x86): fromLittleEndian() is a compile-time no-op via
+if-constexpr, producing identical generated code to the original.
+
+On big-endian (s390x): each site adds one LRVG/LRVR (Load Reversed)
+instruction, which executes in a single cycle on z15.
+---
+--- a/src/Processors/Formats/Impl/Parquet/Decoding.cpp	2026-04-10 17:38:33.228129065 -0700
++++ b/src/Processors/Formats/Impl/Parquet/Decoding.cpp	2026-04-10 18:09:22.388931134 -0700
+@@ -3,6 +3,7 @@
+ #include <base/arithmeticOverflow.h>
+ #include <Columns/ColumnString.h>
+ #include <Common/FloatUtils.h>
++#include <bit>
+
+ #include <arrow/util/bit_stream_utils_internal.h>
+
+@@ -17,6 +18,18 @@
+ namespace DB::Parquet
+ {
+
++/// Parquet stores all multi-byte integers in little-endian byte order.
++/// This helper converts from little-endian to native byte order.
++/// On little-endian platforms it compiles to a no-op.
++template <typename T>
++requires std::is_integral_v<T>
++static inline T fromLittleEndian(T x)
++{
++    if constexpr (std::endian::native != std::endian::little)
++        return std::byteswap(x);
++    return x;
++}
++
+ /// Used for dictionary indices and repetition/definition levels.
+ /// Throws if any decoded value is >= `limit`.
+ template <typename T>
+@@ -57,6 +70,7 @@
+             requireRemainingBytes(4);
+             UInt32 len = 0;
+             memcpy(&len, data, 4);
++            len = fromLittleEndian(len);
+             data += 4;
+             if (ssize_t(len) > end - data)
+                 throw Exception(ErrorCodes::INCORRECT_DATA, "Invalid length of RLE-encoded page: {} > {}", len, end - data);
+@@ -108,6 +122,7 @@
+             requireRemainingBytes(byte_width);
+
+             memcpy(&val, data, sizeof(T));
++            val = fromLittleEndian(val);
+             val &= value_mask;
+
+             if (val >= limit)
+@@ -161,6 +176,7 @@
+                     {
+                         size_t x;
+                         memcpy(&x, data + (bit_idx >> 3), 8);
++                        x = fromLittleEndian(x);
+                         x = (x >> (bit_idx & 7)) & value_mask;
+
+                         if (x >= limit)
+@@ -330,6 +346,7 @@
+         {
+             UInt32 x;
+             memcpy(&x, data, 4); /// omitting range check because input is padded
++            x = fromLittleEndian(x);
+             size_t len = 4 + size_t(x);
+             requireRemainingBytes(len);
+             data += len;
+@@ -352,6 +369,7 @@
+             {
+                 UInt32 x;
+                 memcpy(&x, data, 4); /// omitting range check because input is padded
++                x = fromLittleEndian(x);
+                 size_t len = 4 + size_t(x);
+                 requireRemainingBytes(len);
+                 if (!filter || filter[filter_offset + i])
+@@ -374,6 +392,7 @@
+                     {
+                         UInt32 x;
+                         memcpy(&x, data, 4);
++                        x = fromLittleEndian(x);
+                         data += 4 + size_t(x);
+                     }
+                     return;
+@@ -385,6 +404,7 @@
+                 {
+                     UInt32 x;
+                     memcpy(&x, data, 4);
++                    x = fromLittleEndian(x);
+                     size_t len = 4 + size_t(x);
+                     requireRemainingBytes(len);
+                     if (filter[filter_offset + i])
+@@ -407,6 +427,7 @@
+             {
+                 UInt32 x;
+                 memcpy(&x, data, 4); /// omitting range check because input is padded
++                x = fromLittleEndian(x);
+                 size_t len = 4 + size_t(x);
+                 requireRemainingBytes(len);
+                 offset += len;
+@@ -980,7 +1001,7 @@
+                 /// we should reuse that instead.
+                 for (size_t stream = 0; stream < num_streams; ++stream)
+                 {
+-                    UInt64 x = unalignedLoad<UInt64>(&data[i + stream * stream_size]);
++                    UInt64 x = fromLittleEndian(unalignedLoad<UInt64>(&data[i + stream * stream_size]));
+                     to[(i + 0) * num_streams + stream] = char(UInt8(x >> 0));
+                     to[(i + 1) * num_streams + stream] = char(UInt8(x >>  8));
+                     to[(i + 2) * num_streams + stream] = char(UInt8(x >> 16));
+@@ -1188,6 +1209,7 @@
+         {
+             UInt32 x;
+             memcpy(&x, ptr, 4); /// omitting range check because input is padded
++            x = fromLittleEndian(x);
+             size_t len = 4 + size_t(x);
+             if (len > size_t(end - ptr))
+                 throw Exception(ErrorCodes::INCORRECT_DATA, "Encoded string is out of bounds");
+@@ -1232,6 +1254,14 @@
+     size_t size = indexes.size();
+     for (size_t i = 0; i < size; ++i)
+         memcpy(to.data() + i * value_size, data.data() + indexes[i] * value_size, value_size);
++    /// Parquet stores column data in little-endian; swap to native on BE after the gather memcpy.
++    if constexpr (std::endian::native != std::endian::little
++                  && (value_size == 2 || value_size == 4 || value_size == 8))
++    {
++        using U = std::conditional_t<value_size == 2, uint16_t, std::conditional_t<value_size == 4, uint32_t, uint64_t>>;
++        auto * p = reinterpret_cast<U *>(to.data());
++        for (size_t i = 0; i < size; ++i) p[i] = std::byteswap(p[i]);
++    }
+ }
+
+ void Dictionary::index(const ColumnUInt32 & indexes_col, IColumn & out)
+@@ -1289,4 +1320,16 @@
+     auto to = col.insertRawUninitialized(num_values);
+     chassert(to.size() == num_values * value_size);
+     memcpy(to.data(), data, to.size());
++    /// Parquet stores column data in little-endian; swap to native on BE.
++    /// value_size 1 (booleans) and 16 (wide ints) are handled by other code paths.
++    if constexpr (std::endian::native != std::endian::little)
++    {
++        switch (value_size)
++        {
++            case 2: { auto * p = reinterpret_cast<uint16_t *>(to.data()); for (size_t i = 0; i < num_values; ++i) p[i] = std::byteswap(p[i]); break; }
++            case 4: { auto * p = reinterpret_cast<uint32_t *>(to.data()); for (size_t i = 0; i < num_values; ++i) p[i] = std::byteswap(p[i]); break; }
++            case 8: { auto * p = reinterpret_cast<uint64_t *>(to.data()); for (size_t i = 0; i < num_values; ++i) p[i] = std::byteswap(p[i]); break; }
++            default: break;
++        }
++    }
+ }
+
+@@ -1300,6 +1343,7 @@
+         /// (Can't reinterpret_cast<const From *>(from_bytes) because pointer may be unaligned).
+         From x;
+         memcpy(&x, from_bytes + i * sizeof(From), sizeof(From));
++        x = fromLittleEndian(x);
+         to[i] = static_cast<To>(x);
+     }
+ }
+@@ -1361,9 +1384,9 @@
+     switch (input_size)
+     {
+         case 1: val = unalignedLoad<UInt8>(data.data()); break;
+-        case 2: val = unalignedLoad<UInt16>(data.data()); break;
+-        case 4: val = unalignedLoad<UInt32>(data.data()); break;
+-        case 8: val = unalignedLoad<UInt64>(data.data()); break;
++        case 2: val = fromLittleEndian(unalignedLoad<UInt16>(data.data())); break;
++        case 4: val = fromLittleEndian(unalignedLoad<UInt32>(data.data())); break;
++        case 8: val = fromLittleEndian(unalignedLoad<UInt64>(data.data())); break;
+         default: chassert(false);
+     }
+
+@@ -1423,6 +1446,11 @@
+
+     T x;
+     memcpy(&x, data.data(), sizeof(x));
++    if constexpr (std::endian::native != std::endian::little)
++    {
++        using UIntT = std::conditional_t<sizeof(T) == 4, UInt32, UInt64>;
++        x = std::bit_cast<T>(std::byteswap(std::bit_cast<UIntT>(x)));
++    }
+
+     /// parquet.thrift says:
+     /// (*) Because the sorting order is not specified properly for floating
+@@ -1452,6 +1480,7 @@
+     {
+         uint16_t x;
+         memcpy(&x, data.data() + i * 2, 2);
++        x = fromLittleEndian(x);
+         out_data.push_back(convertFloat16ToFloat32(x));
+     }
+ }
+@@ -1646,8 +1675,8 @@
+     Int64 * to = reinterpret_cast<Int64 *>(to_span.data());
+     for (size_t i = 0; i < num_values; ++i)
+     {
+-        const Int64 nanos = unalignedLoad<Int64>(data.data() + i * 12);
+-        const Int64 julian_day = Int64(unalignedLoad<Int32>(data.data() + i * 12 + 8));
++        const Int64 nanos = fromLittleEndian(unalignedLoad<Int64>(data.data() + i * 12));
++        const Int64 julian_day = Int64(fromLittleEndian(unalignedLoad<Int32>(data.data() + i * 12 + 8)));
+
+         const Int64 day_nanos = 86400'000'000'000;
+         /// (Allow negative values just in case. Maybe someone uses them to correct for the fact
+--- a/src/Processors/Formats/Impl/Parquet/Reader.cpp	2026-04-10 17:38:33.230368516 -0700
++++ b/src/Processors/Formats/Impl/Parquet/Reader.cpp	2026-04-10 18:26:27.753166279 -0700
+@@ -18,6 +18,7 @@
+ #include <Storages/MergeTree/MergeTreeSplitPrewhereIntoReadSteps.h>
+
+ #include <mutex>
++#include <bit>
+ #include <lz4.h>
+ #include <arrow/util/crc32.h>
+
+@@ -25,6 +26,18 @@
+ #include <snappy.h>
+ #endif
+
++/// Parquet stores all multi-byte integers in little-endian byte order.
++/// This helper converts from little-endian to native byte order.
++/// On little-endian platforms it compiles to a no-op.
++template <typename T>
++requires std::is_integral_v<T>
++static inline T fromLittleEndian(T x)
++{
++    if constexpr (std::endian::native != std::endian::little)
++        return std::byteswap(x);
++    return x;
++}
++
+ namespace DB::ErrorCodes
+ {
+     extern const int CANNOT_DECOMPRESS;
+@@ -192,6 +205,7 @@
+
+     int32_t metadata_size_i32;
+     memcpy(&metadata_size_i32, buf.data() + initial_read_size - 8, 4);
++    metadata_size_i32 = fromLittleEndian(metadata_size_i32);
+     if (metadata_size_i32 <= 0 || size_t(metadata_size_i32) + 8 > file_size)
+         throw Exception(ErrorCodes::INCORRECT_DATA, "Bad metadata size in parquet file: {} bytes", metadata_size_i32);
+
+@@ -873,7 +887,7 @@
+         for (size_t i = 0; i < 8; ++i)
+         {
+             size_t bit_idx = UInt32(UInt32(h) * salt[i]) >> 27;
+-            UInt32 word = unalignedLoad<UInt32>(data.data() + i * 4);
++            UInt32 word = fromLittleEndian(unalignedLoad<UInt32>(data.data() + i * 4));
+             if (!(word & (1u << bit_idx)))
+             {
+                 miss = true;
+@@ -1607,6 +1621,7 @@
+                 if (page.data.size() < 4)
+                     throw Exception(ErrorCodes::INCORRECT_DATA, "Decompressed data is too short (rep size)");
+                 memcpy(&n, page.data.data(), 4);
++                n = fromLittleEndian(n);
+                 if (n > page.data.size() - 4)
+                     throw Exception(ErrorCodes::INCORRECT_DATA, "Decompressed data is too short (rep)");
+                 encoded_rep = page.data.data() + 4;
+@@ -1617,6 +1632,7 @@
+             if (page.data.size() < 4)
+                 throw Exception(ErrorCodes::INCORRECT_DATA, "Decompressed data is too short (def size)");
+             memcpy(&n, page.data.data(), 4);
++            n = fromLittleEndian(n);
+             if (n > page.data.size() - 4)
+                 throw Exception(ErrorCodes::INCORRECT_DATA, "Decompressed data is too short (def)");
+             encoded_def = page.data.data() + 4;

@@ -1,0 +1,256 @@
+diff --git a/src/Columns/ColumnArray.cpp b/src/Columns/ColumnArray.cpp
+index 8678433e..8fbf3f22 100644
+--- a/src/Columns/ColumnArray.cpp
++++ b/src/Columns/ColumnArray.cpp
+@@ -17,6 +17,7 @@
+ #include <Common/assert_cast.h>
+ #include <Common/WeakHash.h>
+ #include <Common/HashTable/Hash.h>
++#include <Common/transformEndianness.h>
+ #include <IO/Operators.h>
+ #include <cstring> // memcpy
+ 
+@@ -232,7 +233,9 @@ ColumnArray::serializeValueIntoArena(size_t n, Arena & arena, char const *& begi
+     size_t offset = offsetAt(n);
+ 
+     char * pos = arena.allocContinue(sizeof(array_size), begin);
+-    memcpy(pos, &array_size, sizeof(array_size));
++    auto array_size_le = array_size;
++    transformEndianness<std::endian::little>(array_size_le);
++    memcpy(pos, &array_size_le, sizeof(array_size_le));
+ 
+     std::string_view res(pos, sizeof(array_size));
+ 
+@@ -250,7 +253,9 @@ char * ColumnArray::serializeValueIntoMemory(size_t n, char * memory, const ICol
+     size_t array_size = sizeAt(n);
+     size_t offset = offsetAt(n);
+ 
+-    memcpy(memory, &array_size, sizeof(array_size));
++    auto array_size_le = array_size;
++    transformEndianness<std::endian::little>(array_size_le);
++    memcpy(memory, &array_size_le, sizeof(array_size_le));
+     memory += sizeof(array_size);
+     for (size_t i = 0; i < array_size; ++i)
+         memory = getData().serializeValueIntoMemory(offset + i, memory, settings);
+diff --git a/src/Columns/ColumnDecimal.cpp b/src/Columns/ColumnDecimal.cpp
+index 0a387cc0..f3e9a494 100644
+--- a/src/Columns/ColumnDecimal.cpp
++++ b/src/Columns/ColumnDecimal.cpp
+@@ -7,6 +7,7 @@
+ #include <Common/WeakHash.h>
+ #include <Common/assert_cast.h>
+ #include <Common/iota.h>
++#include <Common/transformEndianness.h>
+ 
+ #include <Core/DecimalFunctions.h>
+ #include <Core/TypeId.h>
+@@ -84,6 +85,15 @@ Float64 ColumnDecimal<T>::getFloat64(size_t n) const
+     return DecimalUtils::convertTo<Float64>(data[n], scale);
+ }
+ 
++template <is_decimal T>
++char * ColumnDecimal<T>::serializeValueIntoMemory(size_t n, char * memory, const IColumn::SerializationSettings *) const
++{
++    T value = data[n];
++    transformEndianness<std::endian::little>(value);
++    memcpy(memory, &value, sizeof(T));
++    return memory + sizeof(T);
++}
++
+ template <is_decimal T>
+ void ColumnDecimal<T>::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings *)
+ {
+diff --git a/src/Columns/ColumnDecimal.h b/src/Columns/ColumnDecimal.h
+index 63ab1b08..5224f28f 100644
+--- a/src/Columns/ColumnDecimal.h
++++ b/src/Columns/ColumnDecimal.h
+@@ -100,6 +100,7 @@ public:
+ 
+     Float64 getFloat64(size_t n) const final;
+ 
++    char * serializeValueIntoMemory(size_t n, char * memory, const IColumn::SerializationSettings * settings) const override;
+     void deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings * settings) override;
+     void skipSerializedInArena(ReadBuffer & in) const override;
+     void updateHashWithValue(size_t n, SipHash & hash) const override;
+diff --git a/src/Columns/ColumnDynamic.cpp b/src/Columns/ColumnDynamic.cpp
+index 3bc19736..cadda6e4 100644
+--- a/src/Columns/ColumnDynamic.cpp
++++ b/src/Columns/ColumnDynamic.cpp
+@@ -19,6 +19,7 @@
+ #include <Common/Arena.h>
+ #include <Common/SipHash.h>
+ #include <Common/UnorderedSetWithMemoryTracking.h>
++#include <Common/transformEndianness.h>
+ 
+ namespace DB
+ {
+@@ -763,7 +764,9 @@ std::string_view ColumnDynamic::serializeValueIntoArena(size_t n, Arena & arena,
+     char * pos = arena.allocContinue(sizeof(UInt8) + sizeof(size_t) + type_and_value.size(), begin);
+     memcpy(pos, &null_bit, sizeof(UInt8));
+     size_t type_and_value_size = type_and_value.size();
+-    memcpy(pos + sizeof(UInt8), &type_and_value_size, sizeof(size_t));
++    auto type_and_value_size_le = type_and_value_size;
++    transformEndianness<std::endian::little>(type_and_value_size_le);
++    memcpy(pos + sizeof(UInt8), &type_and_value_size_le, sizeof(size_t));
+     memcpy(pos + sizeof(UInt8) + sizeof(size_t), type_and_value.data(), type_and_value.size());
+     return {pos, sizeof(UInt8) + sizeof(size_t) + type_and_value.size()};
+ }
+diff --git a/src/Columns/ColumnObject.cpp b/src/Columns/ColumnObject.cpp
+index 1adf3698..0207a381 100644
+--- a/src/Columns/ColumnObject.cpp
++++ b/src/Columns/ColumnObject.cpp
+@@ -8,6 +8,7 @@
+ #include <Common/Arena.h>
+ #include <Common/SipHash.h>
+ #include <Common/logger_useful.h>
++#include <Common/transformEndianness.h>
+ 
+ namespace DB
+ {
+@@ -950,7 +951,9 @@ void ColumnObject::serializeDynamicPathsAndSharedDataIntoArena(size_t n, Arena &
+         num_paths += !column->isNullAt(n);
+ 
+     char * pos = arena.allocContinue(sizeof(size_t), begin);
+-    memcpy(pos, &num_paths, sizeof(size_t));
++    auto num_paths_le = num_paths;
++    transformEndianness<std::endian::little>(num_paths_le);
++    memcpy(pos, &num_paths_le, sizeof(size_t));
+     res = std::string_view{pos - res.size(), res.size() + sizeof(size_t)};
+ 
+     auto dynamic_paths_it = sorted_dynamic_paths.begin();
+@@ -992,9 +995,13 @@ void ColumnObject::serializePathAndValueIntoArena(DB::Arena & arena, const char
+     size_t value_size = value.size();
+     size_t path_size = path.size();
+     char * pos = arena.allocContinue(sizeof(size_t) + path_size + sizeof(size_t) + value_size, begin);
+-    memcpy(pos, &path_size, sizeof(size_t));
++    auto path_size_le = path_size;
++    transformEndianness<std::endian::little>(path_size_le);
++    memcpy(pos, &path_size_le, sizeof(size_t));
+     memcpy(pos + sizeof(size_t), path.data(), path_size);
+-    memcpy(pos + sizeof(size_t) + path_size, &value_size, sizeof(size_t));
++    auto value_size_le = value_size;
++    transformEndianness<std::endian::little>(value_size_le);
++    memcpy(pos + sizeof(size_t) + path_size, &value_size_le, sizeof(size_t));
+     memcpy(pos + sizeof(size_t) + path_size + sizeof(size_t), value.data(), value_size);
+     res = std::string_view{pos - res.size(), res.size() + sizeof(size_t) + path_size + sizeof(size_t) + value_size};
+ }
+diff --git a/src/Columns/ColumnString.cpp b/src/Columns/ColumnString.cpp
+index e4b71213..6b0b2102 100644
+--- a/src/Columns/ColumnString.cpp
++++ b/src/Columns/ColumnString.cpp
+@@ -10,6 +10,7 @@
+ #include <Common/SipHash.h>
+ #include <Common/WeakHash.h>
+ #include <Common/assert_cast.h>
++#include <Common/transformEndianness.h>
+ 
+ 
+ namespace DB
+@@ -279,7 +280,9 @@ std::string_view ColumnString::serializeValueIntoArena(size_t n, Arena & arena,
+ 
+     auto result_size = sizeof(string_size) + string_size;
+     char * pos = arena.allocContinue(result_size, begin);
+-    memcpy(pos, &string_size, sizeof(string_size));
++    auto string_size_le = string_size;
++    transformEndianness<std::endian::little>(string_size_le);
++    memcpy(pos, &string_size_le, sizeof(string_size_le));
+     memcpy(pos + sizeof(string_size), &chars[offset], string_size - serialize_string_with_zero_byte);
+     if (serialize_string_with_zero_byte)
+         *(pos + sizeof(string_size) + string_size - 1) = 0;
+@@ -292,7 +295,9 @@ ALWAYS_INLINE char * ColumnString::serializeValueIntoMemory(size_t n, char * mem
+     size_t string_size = sizeAt(n) + serialize_string_with_zero_byte;
+     size_t offset = offsetAt(n);
+ 
+-    memcpy(memory, &string_size, sizeof(string_size));
++    auto string_size_le = string_size;
++    transformEndianness<std::endian::little>(string_size_le);
++    memcpy(memory, &string_size_le, sizeof(string_size_le));
+     memory += sizeof(string_size);
+     memcpy(memory, &chars[offset], string_size - serialize_string_with_zero_byte);
+     if (serialize_string_with_zero_byte)
+@@ -309,7 +314,9 @@ void ColumnString::batchSerializeValueIntoMemory(std::vector<char *> & memories,
+         size_t string_size = sizeAt(i) + serialize_string_with_zero_byte;
+         size_t offset = offsetAt(i);
+ 
+-        memcpy(memories[i], &string_size, sizeof(string_size));
++        auto string_size_le = string_size;
++        transformEndianness<std::endian::little>(string_size_le);
++        memcpy(memories[i], &string_size_le, sizeof(string_size_le));
+         memories[i] += sizeof(string_size);
+         memcpy(memories[i], &chars[offset], string_size - serialize_string_with_zero_byte);
+         if (serialize_string_with_zero_byte)
+diff --git a/src/Columns/ColumnVariant.cpp b/src/Columns/ColumnVariant.cpp
+index 1e54605a..e6a2815f 100644
+--- a/src/Columns/ColumnVariant.cpp
++++ b/src/Columns/ColumnVariant.cpp
+@@ -15,6 +15,7 @@
+ #include <Common/Arena.h>
+ #include <Common/SipHash.h>
+ #include <Common/HashTable/Hash.h>
++#include <Common/transformEndianness.h>
+ #include <Columns/MaskOperations.h>
+ 
+ 
+@@ -812,7 +813,9 @@ std::string_view ColumnVariant::serializeValueIntoArena(size_t n, Arena & arena,
+     /// During any serialization/deserialization we should always use global discriminators.
+     Discriminator global_discr = globalDiscriminatorAt(n);
+     char * pos = arena.allocContinue(sizeof(global_discr), begin);
+-    memcpy(pos, &global_discr, sizeof(global_discr));
++    auto global_discr_le = global_discr;
++    transformEndianness<std::endian::little>(global_discr_le);
++    memcpy(pos, &global_discr_le, sizeof(global_discr_le));
+     std::string_view res(pos, sizeof(global_discr));
+ 
+     if (global_discr == NULL_DISCRIMINATOR)
+@@ -854,7 +857,9 @@ void ColumnVariant::skipSerializedInArena(ReadBuffer & in) const
+ char * ColumnVariant::serializeValueIntoMemory(size_t n, char * memory, const IColumn::SerializationSettings * settings) const
+ {
+     Discriminator global_discr = globalDiscriminatorAt(n);
+-    memcpy(memory, &global_discr, sizeof(global_discr));
++    auto global_discr_le = global_discr;
++    transformEndianness<std::endian::little>(global_discr_le);
++    memcpy(memory, &global_discr_le, sizeof(global_discr_le));
+     memory += sizeof(global_discr);
+     if (global_discr == NULL_DISCRIMINATOR)
+         return memory;
+diff --git a/src/Columns/ColumnVector.cpp b/src/Columns/ColumnVector.cpp
+index bd75467b..0ea49d12 100644
+--- a/src/Columns/ColumnVector.cpp
++++ b/src/Columns/ColumnVector.cpp
+@@ -23,6 +23,7 @@
+ #include <Common/assert_cast.h>
+ #include <Common/findExtreme.h>
+ #include <Common/iota.h>
++#include <Common/transformEndianness.h>
+ #include <DataTypes/FieldToDataType.h>
+ #include <IO/Operators.h>
+ #include <IO/ReadHelpers.h>
+@@ -53,6 +54,15 @@ namespace ErrorCodes
+     extern const int NOT_IMPLEMENTED;
+ }
+ 
++template <typename T>
++char * ColumnVector<T>::serializeValueIntoMemory(size_t n, char * memory, const IColumn::SerializationSettings *) const
++{
++    T value = data[n];
++    transformEndianness<std::endian::little>(value);
++    memcpy(memory, &value, sizeof(T));
++    return memory + sizeof(T);
++}
++
+ template <typename T>
+ void ColumnVector<T>::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings *)
+ {
+diff --git a/src/Columns/ColumnVector.h b/src/Columns/ColumnVector.h
+index d75602e0..927fa61d 100644
+--- a/src/Columns/ColumnVector.h
++++ b/src/Columns/ColumnVector.h
+@@ -103,6 +103,8 @@ public:
+         data.resize_assume_reserved(data.size() - n);
+     }
+ 
++    char * serializeValueIntoMemory(size_t n, char * memory, const IColumn::SerializationSettings * settings) const override;
++
+     void deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings * settings) override;
+ 
+     void skipSerializedInArena(ReadBuffer & in) const override;

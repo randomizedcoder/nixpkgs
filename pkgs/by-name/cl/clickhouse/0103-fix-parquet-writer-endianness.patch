@@ -1,0 +1,165 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nix-on-z <nix-on-z@s390x>
+Date: Mon, 14 Apr 2026 00:00:00 +0000
+Subject: [PATCH] Fix Parquet writer endianness for big-endian platforms
+
+Parquet format requires all multi-byte integers to be stored in
+little-endian byte order. The ClickHouse Parquet writer and Arrow's
+PlainEncoder write values in native byte order, which is wrong on
+big-endian (s390x).
+
+Arrow encoder.cc (3 sites):
+- UnsafePutByteArray: ByteArray length prefix (uint32) for plain encoding
+- DictEncoderImpl::WriteDict (ByteArray): dictionary string lengths
+- PlainEncoder<DType>::Put(const T*, int): swap Int32/Int64/Float/Double columns
+
+ClickHouse Write.cpp (4 sites):
+- Footer metadata size: toLittleEndian + raw write
+- RLE rep/def length prefix: toLittleEndian before memcpy
+- Statistics::get min/max: toLittleEndian before memcpy
+- flushBloomFilters: toLittleEndian each UInt32 word before write
+
+Column data IS byte-swapped in v6: works with the reader patch's
+symmetric memcpyIntoColumn/indexImpl LE-swap. Together, BE produces
+spec-compliant LE Parquet files that round-trip correctly on BE.
+
+On little-endian (x86): all conversions are compile-time no-ops,
+producing identical generated code to the original.
+---
+--- a/contrib/arrow/cpp/src/parquet/encoder.cc
++++ b/contrib/arrow/cpp/src/parquet/encoder.cc
+@@ -43,6 +43,8 @@
+ #include "arrow/util/spaced_internal.h"
+ #include "arrow/util/ubsan.h"
+ #include "arrow/visit_data_inline.h"
++#include "arrow/util/endian.h"
++#include <bit>
+
+ #include "parquet/exception.h"
+ #include "parquet/platform.h"
+@@ -162,7 +164,9 @@
+ 
+   void UnsafePutByteArray(const void* data, uint32_t length) {
+     DCHECK(length == 0 || data != nullptr) << "Value ptr cannot be NULL";
+-    sink_.UnsafeAppend(&length, sizeof(uint32_t));
++    // Parquet requires little-endian byte order for the length prefix.
++    uint32_t length_le = bit_util::ToLittleEndian(length);
++    sink_.UnsafeAppend(&length_le, sizeof(uint32_t));
+     sink_.UnsafeAppend(data, static_cast<int64_t>(length));
+     unencoded_byte_array_data_bytes_ += length;
+   }
+@@ -201,6 +205,19 @@
+ template <typename DType>
+ void PlainEncoder<DType>::Put(const T* buffer, int num_values) {
+   if (num_values > 0) {
+-    PARQUET_THROW_NOT_OK(sink_.Append(buffer, num_values * sizeof(T)));
++    if constexpr (std::endian::native != std::endian::little
++                  && (sizeof(T) == 4 || sizeof(T) == 8)) {
++      /// Parquet stores column data in little-endian; byteswap each value on BE.
++      PARQUET_THROW_NOT_OK(sink_.Reserve(num_values * sizeof(T)));
++      using UIntT = std::conditional_t<sizeof(T) == 4, uint32_t, uint64_t>;
++      for (int i = 0; i < num_values; ++i) {
++        UIntT u;
++        std::memcpy(&u, &buffer[i], sizeof(UIntT));
++        u = bit_util::ByteSwap(u);
++        sink_.UnsafeAppend(&u, sizeof(UIntT));
++      }
++    } else {
++      PARQUET_THROW_NOT_OK(sink_.Append(buffer, num_values * sizeof(T)));
++    }
+   }
+ }
+@@ -658,7 +675,9 @@
+ void DictEncoderImpl<ByteArrayType>::WriteDict(uint8_t* buffer) const {
+   memo_table_.VisitValues(0, [&buffer](::std::string_view v) {
+     uint32_t len = static_cast<uint32_t>(v.length());
+-    memcpy(buffer, &len, sizeof(len));
++    // Parquet requires little-endian byte order for the length prefix.
++    uint32_t len_le = bit_util::ToLittleEndian(len);
++    memcpy(buffer, &len_le, sizeof(len_le));
+     buffer += sizeof(len);
+     memcpy(buffer, v.data(), len);
+     buffer += len;
+--- a/src/Processors/Formats/Impl/Parquet/Write.cpp
++++ b/src/Processors/Formats/Impl/Parquet/Write.cpp
+@@ -7,6 +7,7 @@
+ #include <arrow/util/crc32.h>
+ #include <lz4.h>
+ #include <Poco/JSON/JSON.h>
++#include <bit>
+ #include <Poco/JSON/Object.h>
+ #include <xxhash.h>
+ #include <DataTypes/DataTypeObject.h>
+@@ -43,6 +44,24 @@
+ namespace DB::Parquet
+ {
+
++/// Parquet stores all multi-byte values in little-endian byte order.
++/// This helper converts from native byte order to little-endian for writing.
++/// On little-endian platforms it compiles to a no-op. Supports integer and
++/// float types (float/double via bit_cast through matching unsigned int).
++template <typename T>
++static inline T toLittleEndian(T x)
++{
++    if constexpr (std::endian::native == std::endian::little)
++        return x;
++    else if constexpr (std::is_integral_v<T>)
++        return std::byteswap(x);
++    else if constexpr (std::is_same_v<T, float>)
++        return std::bit_cast<float>(std::byteswap(std::bit_cast<uint32_t>(x)));
++    else if constexpr (std::is_same_v<T, double>)
++        return std::bit_cast<double>(std::byteswap(std::bit_cast<uint64_t>(x)));
++    return x;
++}
++
+ namespace
+ {
+
+@@ -77,8 +96,10 @@
+         s.__isset.min_value = s.__isset.max_value = true;
+         s.min_value.resize(sizeof(T));
+         s.max_value.resize(sizeof(T));
+-        memcpy(s.min_value.data(), &min, sizeof(T));
+-        memcpy(s.max_value.data(), &max, sizeof(T));
++        T min_le = toLittleEndian(min);
++        T max_le = toLittleEndian(max);
++        memcpy(s.min_value.data(), &min_le, sizeof(T));
++        memcpy(s.max_value.data(), &max_le, sizeof(T));
+         s.__set_is_min_value_exact(true);
+         s.__set_is_max_value_exact(true);
+
+@@ -676,7 +697,8 @@
+     encoder.Flush();
+     Int32 len = encoder.len();
+
+-    memcpy(out.data() + offset, &len, prefix_size);
++    Int32 len_le = toLittleEndian(len);
++    memcpy(out.data() + offset, &len_le, prefix_size);
+     out.resize(offset + prefix_size + len);
+ }
+
+@@ -1309,7 +1331,13 @@
+             column.meta_data.__set_bloom_filter_offset(file.offset);
+
+             size_t header_size = serializeThriftStruct(indexes.bloom_filter_header, out);
+             size_t data_size = indexes.bloom_filter_data.size() * sizeof(indexes.bloom_filter_data[0]);
+-            out.write(indexes.bloom_filter_data.raw_data(), data_size);
++            if constexpr (std::endian::native != std::endian::little)
++            {
++                /// Parquet bloom filter words are stored in little-endian.
++                for (size_t i = 0; i < indexes.bloom_filter_data.size(); ++i)
++                    indexes.bloom_filter_data[i] = std::byteswap(indexes.bloom_filter_data[i]);
++            }
++            out.write(indexes.bloom_filter_data.raw_data(), data_size);
+
+             column.meta_data.__set_bloom_filter_length(Int32(header_size + data_size));
+@@ -1486,7 +1514,8 @@
+     if (footer_size > INT32_MAX)
+         throw Exception(ErrorCodes::LIMIT_EXCEEDED, "Parquet file metadata too big: {}", footer_size);
+
+-    writeIntBinary(static_cast<int>(footer_size), out);
++    Int32 footer_size_le = toLittleEndian(static_cast<Int32>(footer_size));
++    out.write(reinterpret_cast<const char *>(&footer_size_le), sizeof(footer_size_le));
+     out.write("PAR1", 4);
+     file.offset += footer_size + 8;
+ }

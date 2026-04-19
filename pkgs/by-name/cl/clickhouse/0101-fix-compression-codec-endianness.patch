@@ -1,0 +1,151 @@
+diff --git a/src/Compression/CompressionCodecFPC.cpp b/src/Compression/CompressionCodecFPC.cpp
+index d3bdb9a1..3807f5b5 100644
+--- a/src/Compression/CompressionCodecFPC.cpp
++++ b/src/Compression/CompressionCodecFPC.cpp
+@@ -239,7 +239,7 @@ class FPCOperation
+     static constexpr std::byte DFCM_BIT_1 = DFCM_BIT << 4;
+     static constexpr std::byte DFCM_BIT_2 = DFCM_BIT;
+     static constexpr UInt32 MAX_ZERO_BYTE_COUNT = 0b111u;
+-    static constexpr std::endian ENDIAN = std::endian::little;
++    static constexpr std::endian ENDIAN = std::endian::native;
+     static constexpr size_t CHUNK_SIZE = 64;
+ 
+ public:
+diff --git a/src/Compression/CompressionCodecGCD.cpp b/src/Compression/CompressionCodecGCD.cpp
+index be4fdcb8..2b376089 100644
+--- a/src/Compression/CompressionCodecGCD.cpp
++++ b/src/Compression/CompressionCodecGCD.cpp
+@@ -89,13 +89,13 @@ void compressDataForType(const char * source, UInt32 source_size, char * dest)
+     while (gcd != T(1) && cur_source < source_end)
+     {
+         if (cur_source == source)
+-            gcd = unalignedLoad<T>(cur_source);
++            gcd = unalignedLoadLittleEndian<T>(cur_source);
+         else
+-            gcd = boost::integer::gcd(gcd, unalignedLoad<T>(cur_source));
++            gcd = boost::integer::gcd(gcd, unalignedLoadLittleEndian<T>(cur_source));
+         cur_source += sizeof(T);
+     }
+ 
+-    unalignedStore<T>(dest, gcd);
++    unalignedStoreLittleEndian<T>(dest, gcd);
+     dest += sizeof(T);
+ 
+     /// GCD compression is pointless if GCD = 1 or GCD = 0 (happens with 0 values in data).
+@@ -114,7 +114,7 @@ void compressDataForType(const char * source, UInt32 source_size, char * dest)
+         cur_source = source;
+         while (cur_source < source_end)
+         {
+-            unalignedStore<T>(dest, static_cast<T>(static_cast<LibdivideT>(unalignedLoad<T>(cur_source)) / divider));
++            unalignedStoreLittleEndian<T>(dest, static_cast<T>(static_cast<LibdivideT>(unalignedLoadLittleEndian<T>(cur_source)) / divider));
+             cur_source += sizeof(T);
+             dest += sizeof(T);
+         }
+@@ -124,7 +124,7 @@ void compressDataForType(const char * source, UInt32 source_size, char * dest)
+         cur_source = source;
+         while (cur_source < source_end)
+         {
+-            unalignedStore<T>(dest, unalignedLoad<T>(cur_source) / gcd);
++            unalignedStoreLittleEndian<T>(dest, unalignedLoadLittleEndian<T>(cur_source) / gcd);
+             cur_source += sizeof(T);
+             dest += sizeof(T);
+         }
+@@ -144,7 +144,7 @@ UInt32 decompressDataForType(const char * source, UInt32 source_size, char * des
+     const char * const source_end = source + source_size;
+     const char * const dest_end = dest + output_size;
+ 
+-    const T gcd_multiplier = unalignedLoad<T>(source);
++    const T gcd_multiplier = unalignedLoadLittleEndian<T>(source);
+     source += sizeof(T);
+ 
+     /// Handle special cases GCD = 1 and GCD = 0.
+@@ -162,7 +162,7 @@ UInt32 decompressDataForType(const char * source, UInt32 source_size, char * des
+     {
+         if (dest + sizeof(T) > dest_end) [[unlikely]]
+             throw Exception(ErrorCodes::CANNOT_DECOMPRESS, "Cannot decompress GCD-encoded data");
+-        unalignedStore<T>(dest, unalignedLoad<T>(source) * gcd_multiplier);
++        unalignedStoreLittleEndian<T>(dest, unalignedLoadLittleEndian<T>(source) * gcd_multiplier);
+ 
+         source += sizeof(T);
+         dest += sizeof(T);
+diff --git a/src/Compression/CompressionCodecT64.cpp b/src/Compression/CompressionCodecT64.cpp
+index 1ab23a90..19c6d814 100644
+--- a/src/Compression/CompressionCodecT64.cpp
++++ b/src/Compression/CompressionCodecT64.cpp
+@@ -357,7 +357,19 @@ void load(const char * src, T * buf, UInt32 tail = 64)
+ template <typename T>
+ void store(const T * buf, char * dst, UInt32 tail = 64)
+ {
+-    memcpy(dst, buf, tail * sizeof(T));
++    if constexpr (std::endian::native == std::endian::little)
++    {
++        memcpy(dst, buf, tail * sizeof(T));
++    }
++    else
++    {
++        /// Store values as little-endian to match the load() function which
++        /// reads as little-endian on big-endian machines.
++        for (UInt32 i = 0; i < tail; ++i)
++        {
++            unalignedStoreLittleEndian<T>(dst + i * sizeof(T), buf[i]);
++        }
++    }
+ }
+ 
+ template <typename T>
+@@ -523,13 +535,15 @@ UInt32 getValuableBitsNumber(Int64 min, Int64 max)
+ template <typename T>
+ void findMinMax(const char * src, UInt32 src_size, T & min, T & max)
+ {
+-    min = unalignedLoad<T>(src);
+-    max = unalignedLoad<T>(src);
++    /// Source data is stored as little-endian on disk, so use LE loads
++    /// to get correct values on big-endian systems.
++    min = unalignedLoadLittleEndian<T>(src);
++    max = unalignedLoadLittleEndian<T>(src);
+ 
+     const char * end = src + src_size;
+     for (; src < end; src += sizeof(T))
+     {
+-        auto current = unalignedLoad<T>(src);
++        auto current = unalignedLoadLittleEndian<T>(src);
+         if (current < min)
+             min = current;
+         if (current > max)
+@@ -566,10 +580,10 @@ UInt32 compressData(const char * src, UInt32 bytes_size, char * dst)
+     MinMaxType min64 = min; // NOLINT
+     MinMaxType max64 = max; // NOLINT
+ 
+-    /// Write header
++    /// Write header (store as little-endian for cross-architecture portability)
+     {
+-        memcpy(dst, &min64, sizeof(MinMaxType));
+-        memcpy(dst + 8, &max64, sizeof(MinMaxType));
++        unalignedStoreLittleEndian<MinMaxType>(dst, min64);
++        unalignedStoreLittleEndian<MinMaxType>(dst + 8, max64);
+         dst += header_size;
+     }
+ 
+@@ -629,10 +643,10 @@ UInt32 decompressData(const char * src, UInt32 bytes_size, char * dst, UInt32 un
+     MinMaxType min;
+     MinMaxType max;
+ 
+-    /// Read header
++    /// Read header (stored as little-endian)
+     {
+-        memcpy(&min, src, sizeof(MinMaxType));
+-        memcpy(&max, src + 8, sizeof(MinMaxType));
++        min = unalignedLoadLittleEndian<MinMaxType>(src);
++        max = unalignedLoadLittleEndian<MinMaxType>(src + 8);
+         src += header_size;
+         bytes_size -= header_size;
+     }
+@@ -642,7 +656,7 @@ UInt32 decompressData(const char * src, UInt32 bytes_size, char * dst, UInt32 un
+     {
+         T min_value = static_cast<T>(min);
+         for (UInt32 i = 0; i < num_elements; ++i, dst += sizeof(T))
+-            unalignedStore<T>(dst, min_value);
++            unalignedStoreLittleEndian<T>(dst, min_value);
+         return static_cast<UInt32>(dst - original_dst);
+     }
+ 
