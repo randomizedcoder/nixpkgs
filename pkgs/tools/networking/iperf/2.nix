@@ -27,6 +27,7 @@ stdenv.mkDerivation (finalAttrs: {
     description = "Tool to measure IP bandwidth using UDP or TCP";
     platforms = lib.platforms.unix;
     license = lib.licenses.mit;
+    mainProgram = "iperf2";
     maintainers = with lib.maintainers; [ randomizedcoder ];
 
     # prioritize iperf3
