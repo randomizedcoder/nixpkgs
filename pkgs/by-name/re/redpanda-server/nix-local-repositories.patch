@@ -1,0 +1,271 @@
+Take c-ares, krb5, openssl and the wasmtime C API from the nixpkgs build
+environment (new_local_repository under nix_deps/, populated by the
+package expression) and drop the LLVM sysroot archives that only the
+hermetic toolchain used.
+
+--- a/bazel/repositories.bzl
++++ b/bazel/repositories.bzl
+@@ -3,7 +3,7 @@
+ """
+ 
+ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+-load("@toolchains_llvm//toolchain:sysroot.bzl", "sysroot")
++load("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+ 
+ def data_dependency():
+     """
+@@ -41,12 +41,11 @@
+         url = "https://vectorized-public.s3.amazonaws.com/dependencies/base64-v0.5.0.tar.gz",
+     )
+ 
+-    http_archive(
++    # nixpkgs: provided by the build environment, see nix_deps/c-ares.
++    new_local_repository(
+         name = "c-ares",
+-        build_file = "//bazel/thirdparty:c-ares.BUILD",
+-        sha256 = "912dd7cc3b3e8a79c52fd7fb9c0f4ecf0aaa73e45efda880266a2d6e26b84ef5",
+-        strip_prefix = "c-ares-1.34.6",
+-        url = "https://vectorized-public.s3.amazonaws.com/dependencies/c-ares-1.34.6.tar.gz",
++        build_file = "//bazel/thirdparty:c-ares-nix.BUILD",
++        path = "nix_deps/c-ares",
+     )
+ 
+     http_archive(
+@@ -75,17 +74,11 @@
+         patch_args = ["-p1"],
+     )
+ 
+-    http_archive(
++    # nixpkgs: provided by the build environment, see nix_deps/krb5.
++    new_local_repository(
+         name = "krb5",
+-        build_file = "//bazel/thirdparty:krb5.BUILD",
+-        sha256 = "289f5bb81d1f2f8d5eecebe56a056aeed95d35fd9bb4a7071c5dd7ad4b3fe888",
+-        strip_prefix = "krb5-krb5-1.22.2-final",
+-        url = "https://github.com/krb5/krb5/archive/refs/tags/krb5-1.22.2-final.tar.gz",
+-        patches = [
+-            "//bazel/thirdparty:0002-Fix-two-NegoEx-parsing-vulnerabilities.patch",
+-            "//bazel/thirdparty:0003-Fix-build-when-KRB5_DNS_LOOKUP-isnt-defined.patch",
+-        ],
+-        patch_args = ["-p1"],
++        build_file = "//bazel/thirdparty:krb5-nix.BUILD",
++        path = "nix_deps/krb5",
+     )
+ 
+     http_archive(
+@@ -126,14 +119,11 @@
+     # This 2 build approach is described in more detail in the FIPS README here:
+     # https://github.com/openssl/openssl/blob/master/README-FIPS.md
+     #
+-    http_archive(
++    # nixpkgs: provided by the build environment, see nix_deps/openssl.
++    new_local_repository(
+         name = "openssl",
+-        build_file = "//bazel/thirdparty:openssl.BUILD",
+-        patches = ["//bazel/thirdparty:openssl-reproducible-buildinf.patch"],
+-        patch_args = ["-p1"],
+-        sha256 = "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8",
+-        strip_prefix = "openssl-3.5.7",
+-        url = "https://vectorized-public.s3.amazonaws.com/dependencies/openssl-3.5.7.tar.gz",
++        build_file = "//bazel/thirdparty:openssl-nix.BUILD",
++        path = "nix_deps/openssl",
+     )
+ 
+     http_archive(
+@@ -193,31 +183,9 @@
+         url = "https://github.com/Cyan4973/xxHash/archive/bbb27a5efb85b92a0486cf361a8635715a53f6ba.tar.gz",
+     )
+ 
+-    # The sysroot is consumed two ways. The upstream `sysroot` rule from
+-    # toolchains_llvm exposes a single source-directory artifact that the
+-    # cc_toolchain ingests as one input. The packaging rules in
+-    # //bazel/packaging need individual file labels for the dynamic loader
+-    # and versioned shared libraries to ship alongside the binary, so we
+-    # also pull the same tarball via http_archive with a glob-based BUILD.
+-    _SYSROOT_URL = "https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-22.1.0/sysroot-ubuntu-22.04-{arch}-2026-05-05.tar.zst"
+-    for arch, sha in [
+-        ("x86_64", "0d85fc9e155e664403c1c3c40831d865796d36a91b78a2e6d8922aa6ad3f0375"),
+-        ("aarch64", "1afc00adf978c90ad8ffd3b729180923c27d57a7702ea23ba35c714e11d0def2"),
+-    ]:
+-        url = _SYSROOT_URL.format(arch = arch)
+-        sysroot(
+-            name = arch + "_sysroot",
+-            sha256 = sha,
+-            urls = [url],
+-        )
+-        http_archive(
+-            name = arch + "_sysroot_runtime",
+-            build_file_content = """filegroup(
+-    name = "runtime",
+-    srcs = glob(["**/*.so.*"], allow_empty = False),
+-    visibility = ["//visibility:public"],
+-)
+-""",
+-            sha256 = sha,
+-            urls = [url],
+-        )
++    # nixpkgs: prebuilt wasmtime C API replaces the crate_universe build.
++    new_local_repository(
++        name = "crates",
++        build_file = "//bazel/thirdparty:wasmtime-nix.BUILD",
++        path = "nix_deps/wasmtime",
++    )
+--- a/bazel/thirdparty/c-ares-nix.BUILD
++++ b/bazel/thirdparty/c-ares-nix.BUILD
+@@ -0,0 +1,15 @@
++load("@rules_cc//cc:cc_import.bzl", "cc_import")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++cc_import(
++    name = "cares_lib",
++    shared_library = "lib/libcares.so.2",
++)
++
++cc_library(
++    name = "c-ares",
++    hdrs = glob(["include/*.h"]),
++    includes = ["include"],
++    visibility = ["//visibility:public"],
++    deps = [":cares_lib"],
++)
+--- a/bazel/thirdparty/krb5-nix.BUILD
++++ b/bazel/thirdparty/krb5-nix.BUILD
+@@ -0,0 +1,30 @@
++load("@rules_cc//cc:cc_import.bzl", "cc_import")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++[
++    cc_import(
++        name = name + "_lib",
++        shared_library = "lib/lib{}.so.{}".format(name, sover),
++    )
++    for name, sover in [
++        ("com_err", "3"),
++        ("gssapi_krb5", "2"),
++        ("k5crypto", "3"),
++        ("krb5", "3"),
++        ("krb5support", "0"),
++    ]
++]
++
++cc_library(
++    name = "krb5",
++    hdrs = glob(["include/**/*.h"]),
++    includes = ["include"],
++    visibility = ["//visibility:public"],
++    deps = [
++        ":com_err_lib",
++        ":gssapi_krb5_lib",
++        ":k5crypto_lib",
++        ":krb5_lib",
++        ":krb5support_lib",
++    ],
++)
+--- a/bazel/thirdparty/openssl-nix.BUILD
++++ b/bazel/thirdparty/openssl-nix.BUILD
+@@ -0,0 +1,78 @@
++load("@bazel_skylib//rules:common_settings.bzl", "int_flag", "string_flag")
++load("@rules_cc//cc:cc_import.bzl", "cc_import")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++# Settings referenced by openssl-fips.BUILD.
++int_flag(
++    name = "build_jobs",
++    build_setting_default = 8,
++    make_variable = "BUILD_JOBS",
++    visibility = ["@openssl-fips//:__pkg__"],
++)
++
++string_flag(
++    name = "build_mode",
++    build_setting_default = "default",
++    values = [
++        "debug",
++        "release",
++        "default",
++    ],
++)
++
++config_setting(
++    name = "debug_mode",
++    flag_values = {":build_mode": "debug"},
++)
++
++config_setting(
++    name = "release_mode",
++    flag_values = {":build_mode": "release"},
++)
++
++cc_import(
++    name = "ssl_lib",
++    shared_library = "lib/libssl.so.3",
++)
++
++cc_import(
++    name = "crypto_lib",
++    shared_library = "lib/libcrypto.so.3",
++)
++
++cc_library(
++    name = "openssl_foreign_cc",
++    hdrs = glob(["include/openssl/*.h"]),
++    includes = ["include"],
++    visibility = ["//visibility:public"],
++    deps = [
++        ":crypto_lib",
++        ":ssl_lib",
++    ],
++)
++
++cc_library(
++    name = "openssl",
++    visibility = ["//visibility:public"],
++    deps = [":openssl_foreign_cc"],
++)
++
++exports_files(["bin/openssl"])
++
++filegroup(
++    name = "openssl_binary",
++    srcs = ["bin/openssl"],
++    visibility = ["//visibility:public"],
++)
++
++filegroup(
++    name = "openssl_exe",
++    srcs = ["bin/openssl"],
++    visibility = ["//visibility:public"],
++)
++
++filegroup(
++    name = "openssl_data",
++    srcs = glob(["etc/ssl/**"]),
++    visibility = ["//visibility:public"],
++)
+--- a/bazel/thirdparty/wasmtime-nix.BUILD
++++ b/bazel/thirdparty/wasmtime-nix.BUILD
+@@ -0,0 +1,24 @@
++load("@rules_cc//cc:cc_import.bzl", "cc_import")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++# Prebuilt wasmtime C API (see wasmtime-c-api.nix in the nixpkgs package).
++cc_import(
++    name = "libwasmtime",
++    static_library = "lib/libwasmtime.a",
++)
++
++cc_library(
++    name = "wasmtime_c",
++    hdrs = glob([
++        "include/**/*.h",
++        "include/**/*.hh",
++    ]),
++    linkopts = [
++        "-lm",
++        "-lpthread",
++        "-ldl",
++    ],
++    strip_include_prefix = "include",
++    visibility = ["//visibility:public"],
++    deps = [":libwasmtime"],
++)
