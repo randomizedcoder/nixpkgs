@@ -341,6 +341,10 @@ stdenv.mkDerivation rec {
   stripExclude = [ "bin/.bazel-${version}-*-wrapped" ];
 
   passthru = {
+    # Builder for Bazel (bzlmod) projects: fixed-output repository cache or
+    # vendor directory plus an offline `bazel build`. See ./examples.nix for
+    # usage; the `bazel` argument must be passed explicitly.
+    buildBazelPackage = callPackage ./build-support/bazelPackage.nix { };
     tests = {
       inherit (callPackage ./examples.nix { }) cpp java rust;
     };
