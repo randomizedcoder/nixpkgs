@@ -1411,6 +1411,13 @@ lib.mapAttrs mkLicense (
       fullName = "Qwt exception 1.0";
     };
 
+    rcl = {
+      fullName = "Redpanda Community License";
+      url = "https://github.com/redpanda-data/redpanda/blob/dev/licenses/rcl.md";
+      free = false;
+      redistributable = true;
+    };
+
     reticulum = {
       # The Reticulum License restricts certain fields of use, notably systems
       # intended to harm human beings and AI/ML training datasets. Such usage
