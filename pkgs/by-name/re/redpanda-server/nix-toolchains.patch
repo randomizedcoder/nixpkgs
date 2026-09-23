@@ -1,0 +1,400 @@
+Make the Bazel build work inside the Nix sandbox: use the Nix provided
+clang, Python, Go and CMake toolchains instead of the ones the upstream
+MODULE.bazel downloads, drop the dev-only extensions (LLVM, Rust, OCI,
+buildifier), fix shebangs in rules_cc and rules_foreign_cc, and route
+the two Go modules pbgen and rules_go need through Bazel's repository cache.
+
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -50,6 +50,12 @@
+ bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+ single_version_override(
+     module_name = "rules_foreign_cc",
++    # nixpkgs: generated build scripts use #!/usr/bin/env bash, which does
++    # not exist in the build sandbox. @nixBash@ is substituted by the
++    # package expression.
++    patch_cmds = [
++        "sed -i 's|#!/usr/bin/env bash|#!@nixBash@|' foreign_cc/private/framework/toolchains/linux_commands.bzl foreign_cc/private/runnable_binary_wrapper.sh",
++    ],
+     patch_strip = 1,
+     patches = [
+         "//bazel/thirdparty:rules_foreign_cc-make441-reproducible.patch",
+@@ -83,21 +89,28 @@
+ 
+ bazel_dep(name = "protovalidate", version = "1.2.0")
+ 
+-python = use_extension("@rules_python//python/extensions:python.bzl", "python", dev_dependency = True)
+-python.toolchain(
+-    ignore_root_user_error = True,
+-    is_default = True,
+-    python_version = "3.12",
+-)
+-
+-pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+-pip.parse(
+-    extra_pip_args = ["--require-hashes"],
+-    hub_name = "python_deps",
+-    python_version = "3.12",
+-    requirements_lock = "//bazel/thirdparty:requirements.txt",
+-)
+-use_repo(pip, "python_deps")
++# nixpkgs: use the python interpreter provided by the build environment
++# instead of downloading a python-build-standalone runtime. @nixPython@ is
++# substituted by the package expression.
++local_runtime_repo = use_repo_rule("@rules_python//python/local_toolchains:repos.bzl", "local_runtime_repo")
++local_runtime_toolchains_repo = use_repo_rule("@rules_python//python/local_toolchains:repos.bzl", "local_runtime_toolchains_repo")
++local_runtime_repo(
++    name = "nix_python3",
++    interpreter_path = "@nixPython@/bin/python3",
++    on_failure = "fail",
++)
++local_runtime_toolchains_repo(
++    name = "nix_python_toolchains",
++    runtimes = ["nix_python3"],
++)
++register_toolchains("@nix_python_toolchains//:all")
++
++# nixpkgs: pip cannot download inside the build sandbox. The python
++# packages the build needs (jinja2, jsonschema) are provided by the
++# interpreter environment; @python_deps only carries empty py_library
++# targets so that labels resolve.
++python_deps = use_extension("//bazel:python_deps.bzl", "python_deps_ext")
++use_repo(python_deps, "python_deps")
+ 
+ non_module_dependencies = use_extension("//bazel:extensions.bzl", "non_module_dependencies")
+ use_repo(non_module_dependencies, "ada")
+@@ -122,137 +135,36 @@
+ use_repo(non_module_dependencies, "unordered_dense")
+ use_repo(non_module_dependencies, "wasmtime")
+ use_repo(non_module_dependencies, "xxhash")
+-use_repo(non_module_dependencies, "x86_64_sysroot")
+-use_repo(non_module_dependencies, "aarch64_sysroot")
+-use_repo(non_module_dependencies, "x86_64_sysroot_runtime")
+-use_repo(non_module_dependencies, "aarch64_sysroot_runtime")
+-
+-bazel_dep(name = "toolchains_llvm", version = "1.7.0", dev_dependency = True)
+-archive_override(
+-    module_name = "toolchains_llvm",
+-    integrity = "sha256-moo9nZEm6v8R/gq4audotnJyFLp89pcy4Ic97PUCaN0=",
+-    strip_prefix = "toolchains_llvm-98414f360d37e4fc9fb308b357d1bd8df9f92428",
+-    urls = ["https://github.com/bazel-contrib/toolchains_llvm/archive/98414f360d37e4fc9fb308b357d1bd8df9f92428.tar.gz"],
+-)
+-
+-# ====================================
+-# LLVM toolchain
+-# ====================================
+-
+-# NOTE: We build our toolchains on ubuntu:jammy so you're going to need a distro at least that old.
+-llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+-
+-CXX_STANDARD = "c++23"
+-
+-# This is based off of the default flags in toolchains_llvm
+-# https://github.com/bazel-contrib/toolchains_llvm/blob/69d39965/toolchain/cc_toolchain_config.bzl#L125-L137
+-COMMON_COMPILE_FLAGS = [
+-    "-U_FORTIFY_SOURCE",
+-    "-fstack-protector",
+-    "-fno-omit-frame-pointer",
+-    "-fcolor-diagnostics",
+-    "-Wall",
+-    "-Wthread-safety",
+-    "-Wself-assign",
+-]
+-
+-COMPILE_FLAGS = {
+-    "linux-aarch64": [
+-        "--target=aarch64-unknown-linux-gnu",
+-        "-march=armv8-a+crc+crypto",
+-    ] + COMMON_COMPILE_FLAGS,
+-    "linux-x86_64": [
+-        "--target=x86_64-unknown-linux-gnu",
+-        "-march=westmere",
+-    ] + COMMON_COMPILE_FLAGS,
+-}
+-
+-COMPILERS = {
+-    "current": {
+-        "tars": {
+-            "aarch64": {
+-                "build_date": "2026-03-02",
+-                "sha": "4fcc2b9cc39b98f63e63739a5229e0b73a2bc9b26d1f4681f12c2cf55ddcab6e",
+-            },
+-            "x86_64": {
+-                "build_date": "2026-03-02",
+-                "sha": "46eacaffa999ea1d0fcb83f28d3f1089363fbb389dfbcf043e6c5de7329dc0b3",
+-            },
+-        },
+-        "version": "22.1.0",
+-    },
+-}
+-
+-[
+-    (
+-        llvm.toolchain(
+-            name = "{version}_llvm_toolchain".format(version = major_version),
+-            compile_flags = COMPILE_FLAGS,
+-            cxx_standard = {"": CXX_STANDARD},
+-            llvm_version = compiler["version"],
+-            sha256 = {
+-                "linux-" + arch: compiler["tars"][arch]["sha"]
+-                for arch in [
+-                    "aarch64",
+-                    "x86_64",
+-                ]
+-            },
+-            urls = {
+-                "linux-" + arch: ["https://github.com/redpanda-data/llvm-project/releases/download/llvmorg-{version}/llvm-{version}-debian-11-{arch}-{date}.tar.zst".format(
+-                    arch = arch,
+-                    date = compiler["tars"][arch]["build_date"],
+-                    version = compiler["version"],
+-                )]
+-                for arch in [
+-                    "aarch64",
+-                    "x86_64",
+-                ]
+-            },
+-        ),
+-        llvm.sysroot(
+-            name = "{version}_llvm_toolchain".format(version = major_version),
+-            label = "@x86_64_sysroot//sysroot:sysroot",
+-            targets = ["linux-x86_64"],
+-        ),
+-        llvm.sysroot(
+-            name = "{version}_llvm_toolchain".format(version = major_version),
+-            label = "@aarch64_sysroot//sysroot:sysroot",
+-            targets = ["linux-aarch64"],
+-        ),
+-        use_repo(llvm, "{version}_llvm_toolchain".format(version = major_version)),
+-        use_repo(llvm, "{version}_llvm_toolchain_llvm".format(version = major_version)),
+-        register_toolchains(
+-            "@{version}_llvm_toolchain//:all".format(version = major_version),
+-            dev_dependency = True,
+-        ),
+-    )
+-    for (major_version, compiler) in COMPILERS.items()
+-]
+ 
+ # ====================================
+ # Go Toolchain
+ # ====================================
+ go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk", dev_dependency = True)
+-go_sdk.download(version = "1.26.5")
+-
+-# The microsoft compiler versions can be listed at their github release under the `asset.json` file
+-go_sdk.download(
+-    name = "go_sdk_with_systemcrypto",
+-    experiments = ["systemcrypto"],
+-    sdks = {
+-        "linux_amd64": ("96d1f4b28a670f8e9b3259194508ae2f/go1.26.5-20260709.6.linux-amd64.tar.gz", "df9f45167cf1cd825aa8555b76c5b24cb89dfbd771f48cc0007458236c414715"),
+-        "linux_arm64": ("af17683a03acab86aec9ba37afbd5ff1/go1.26.5-20260709.6.linux-arm64.tar.gz", "9990f8fcfefcbd15fb888dd777c7a72f1745889c9e94836ffe26f7e46e43328d"),
+-        "darwin_amd64": ("d45676061dfccb09b72f2579a6d8927f/go1.26.5-20260709.6.darwin-amd64.tar.gz", "7a4f0bd26ccf1ce912bc509fccb473ee39bdd149b804fa581e59a72b7708e78e"),
+-        "darwin_arm64": ("f8da58db7007fa456d93c4f56bf6c337/go1.26.5-20260709.6.darwin-arm64.tar.gz", "a6d2124035c18602926af78d1e3ae523abc613e36b2086da9b451991ce4288c4"),
+-    },
+-    urls = ["https://download.visualstudio.microsoft.com/download/pr/a38f1e38-3cd4-48b2-b032-ca38793ec901/{}"],
+-    version = "1.26.5",
+-)
++go_sdk.host()
+ 
+ go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+ go_deps.config(check_direct_dependencies = "error")
+ go_deps.from_file(go_work = "//bazel/thirdparty:go.work")
+ 
++# gazelle's go_deps normally fetches Go modules with `fetch_repo`, which talks
++# GOPROXY directly and bypasses Bazel's repository cache, so the modules are
++# not in the fixed-output cache and the offline build fails. An
++# archive_override makes go_repository use Bazel's own downloader instead, so
++# the proxy zips are cached like every other archive. Only the two modules
++# that //bazel/pbgen and rules_go's proto support need are built.
++go_deps.archive_override(
++    path = "google.golang.org/protobuf",
++    sha256 = "68f8a3174aff42950fd9bd02c11b45c6986eb8060508d124d1c3dd6bf86b9be6",
++    strip_prefix = "google.golang.org/protobuf@v1.36.12",
++    urls = ["https://proxy.golang.org/google.golang.org/protobuf/@v/v1.36.12.zip"],
++)
++go_deps.archive_override(
++    path = "github.com/golang/protobuf",
++    sha256 = "9a2f43d3eac8ceda506ebbeb4f229254b87235ce90346692a0e233614182190b",
++    strip_prefix = "github.com/golang/protobuf@v1.5.4",
++    urls = ["https://proxy.golang.org/github.com/golang/protobuf/@v/v1.5.4.zip"],
++)
++
+ # TODO(bazel): Upstream this so we can remove this obscure workaround.
+ go_deps.gazelle_override(
+     directives = [
+@@ -354,48 +266,6 @@
+ )
+ 
+ # ====================================
+-# Rust Toolchain
+-# ====================================
+-rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
+-rust.toolchain(
+-    edition = "2021",
+-    extra_target_triples = [
+-        "aarch64-unknown-linux-gnu",
+-        "x86_64-unknown-linux-gnu",
+-    ],
+-    versions = ["1.91.0"],
+-)
+-use_repo(rust, "rust_toolchains")
+-
+-register_toolchains(
+-    "@rust_toolchains//:all",
+-    dev_dependency = True,
+-)
+-
+-crate = use_extension(
+-    "@rules_rust//crate_universe:extension.bzl",
+-    "crate",
+-)
+-crate.from_cargo(
+-    name = "crates",
+-    cargo_lockfile = "//bazel/thirdparty:Cargo.lock",
+-    manifests = ["//bazel/thirdparty:Cargo.toml"],
+-    supported_platform_triples = [
+-        # We currently only build this rust code on linux
+-        # so don't fetch for other platforms
+-        "aarch64-unknown-linux-gnu",
+-        "x86_64-unknown-linux-gnu",
+-    ],
+-)
+-crate.annotation(
+-    additive_build_file = "//bazel/thirdparty:wasmtime.BUILD",
+-    crate = "wasmtime-c-api-impl",
+-    extra_aliased_targets = {"wasmtime_c": "wasmtime_c"},
+-    gen_build_script = "off",
+-)
+-use_repo(crate, "crates")
+-
+-# ====================================
+ # OCI Base Images
+ # ====================================
+ bazel_dep(name = "rules_oci", version = "2.3.0", dev_dependency = True)
+@@ -520,3 +390,50 @@
+     strip_prefix = "JSONTestSuite-1ef36fa01286573e846ac449e8683f8833c5b26a",
+     urls = ["https://github.com/nst/JSONTestSuite/archive/1ef36fa01286573e846ac449e8683f8833c5b26a.tar.gz"],
+ )
++
++# ====================================
++# nixpkgs build support
++# ====================================
++
++# @crates//:wasmtime_c is normally produced by crate_universe; nixpkgs
++# provides a prebuilt wasmtime C API through bazel/repositories.bzl.
++use_repo(non_module_dependencies, "crates")
++
++# rules_foreign_cc would otherwise download prebuilt cmake/make binaries
++# that cannot run inside the sandbox; use the ones from PATH.
++register_toolchains(
++    "@rules_foreign_cc//toolchains:preinstalled_cmake_toolchain",
++    "@rules_foreign_cc//toolchains:preinstalled_make_toolchain",
++    "@rules_foreign_cc//toolchains:preinstalled_ninja_toolchain",
++    "@rules_foreign_cc//toolchains:preinstalled_pkgconfig_toolchain",
++)
++
++# --config=system-clang references @local_config_cc_toolchains.
++cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
++use_repo(cc_configure, "local_config_cc_toolchains")
++
++# rules_cc helper scripts use #!/bin/bash or #!/usr/bin/env bash; neither
++# exists in the nix build sandbox.
++single_version_override(
++    module_name = "rules_cc",
++    patch_cmds = [
++        "sed -i -e 's|^#!/bin/bash|#!@nixBash@|' -e 's|^#!/usr/bin/env bash|#!@nixBash@|' cc/private/toolchain/*.sh",
++    ],
++)
++
++# Same for the wrapper rules_go runs to build its SDK tools, and for the
++# script rules_python generates as the entry point of every py_binary
++# (the code generators that genrules run during the build).
++single_version_override(
++    module_name = "rules_go",
++    patch_cmds = [
++        "sed -i 's|^#!/usr/bin/env bash|#!@nixBash@|' go/private/rules/binary_wrapper.sh",
++    ],
++)
++
++single_version_override(
++    module_name = "rules_python",
++    patch_cmds = [
++        "sed -i 's|^#!/usr/bin/env bash|#!@nixBash@|' python/private/stage1_bootstrap_template.sh python/private/interpreter_tmpl.sh",
++    ],
++)
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -1,5 +1,3 @@
+-common --registry=https://bcr.bazel.build
+-common --extra_toolchains=@current_llvm_toolchain//:all
+ 
+ # Triple repo downloader retries to try working around github flakiness.
+ common --experimental_repository_downloader_retries=15
+@@ -19,8 +17,6 @@
+ # that doesn't match what the resolved module graph actually uses.
+ common --check_direct_dependencies=error
+ 
+-common --@toolchains_llvm//toolchain/config:libunwind=False
+-common --@toolchains_llvm//toolchain/config:compiler-rt=False
+ build --linkopt --unwindlib=libgcc
+ build --linkopt -stdlib=libc++
+ 
+@@ -50,7 +46,6 @@
+ # allocator-symbol mangling in rustc 1.87+ and leaves those symbols
+ # undefined when a Rust staticlib is linked into a cc_binary via
+ # cc_common.link. See bazelbuild/rules_rust#3459.
+-build --@rules_rust//rust/settings:experimental_use_allocator_libraries_with_mangled_symbols=True
+ 
+ # end of rust settings #
+ 
+--- a/bazel/python_deps.bzl
++++ b/bazel/python_deps.bzl
+@@ -0,0 +1,37 @@
++"""Stub @python_deps repository for the nixpkgs build.
++
++pip cannot download packages inside the nix build sandbox. The python
++packages the build needs are provided by the interpreter environment
++(python3.withPackages), so every @python_deps//<pkg> is an empty
++py_library that only makes the labels resolve.
++"""
++
++load("@rules_python//python:defs.bzl", "py_library")
++
++_PACKAGES = [
++    "aioboto3",
++    "avro",
++    "boto3",
++    "jinja2",
++    "jsonschema",
++    "markupsafe",
++    "psutil",
++    "pyyaml",
++    "s3transfer",
++]
++
++def _python_deps_impl(rctx):
++    rctx.file("BUILD.bazel", "")
++    for pkg in _PACKAGES:
++        rctx.file(
++            "{}/BUILD.bazel".format(pkg),
++            'load("@rules_python//python:defs.bzl", "py_library")\n' +
++            'py_library(name = "{}", visibility = ["//visibility:public"])\n'.format(pkg),
++        )
++
++_python_deps_repo = repository_rule(implementation = _python_deps_impl)
++
++def _python_deps_ext_impl(_ctx):
++    _python_deps_repo(name = "python_deps")
++
++python_deps_ext = module_extension(implementation = _python_deps_ext_impl)
+--- a/src/v/version/expand_with_stamp_vars.bzl
++++ b/src/v/version/expand_with_stamp_vars.bzl
+@@ -27,7 +27,8 @@
+             ctx.outputs.out.path,
+         ],
+         mnemonic = "ExpandStampVars",
+-        use_default_shell_env = False,
++        # nixpkgs: the py_binary bootstrap script needs PATH to find `env`.
++        use_default_shell_env = True,
+     )
+     return DefaultInfo(
+         files = depset([ctx.outputs.out]),
