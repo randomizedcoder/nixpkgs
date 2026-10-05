@@ -17,14 +17,20 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocshmem${clr.gpuArchSuffix}";
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
-    repo = "rocSHMEM";
-    tag = "rocm-${finalAttrs.version}";
-    hash = "sha256-7TiUABwCVPvosoLdR8zN+QGiX+OD7iD+HKMLnGMmRYA=";
+    # therock-10.0: moved into the rocm-systems monorepo
+    repo = "rocm-systems";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
+    sparseCheckout = [
+      "projects/rocshmem"
+      "shared"
+    ];
+    hash = "sha256-KkMtpW1OYqTp4p+d/Z27PCVM4T4oAOtAPk3uqTxFRJA=";
   };
+  sourceRoot = "${finalAttrs.src.name}/projects/rocshmem";
 
   nativeBuildInputs = [
     cmake
@@ -38,6 +44,20 @@ stdenv.mkDerivation (finalAttrs: {
   ++ lib.optionals useMpi [
     mpi
   ];
+
+  # therock-10.0 rocSHMEM compiles device-side bitcode (cmake/DeviceBitcode.cmake)
+  # with a manual clang command whose -I list only covers rocSHMEM's own headers
+  # (+ MPI). Unlike the host librocshmem.a target — which gets HSA headers from the
+  # hsa-runtime64::hsa-runtime64 link interface — that command never sees
+  # <hsa/hsa.h> (util.hpp), so the bitcode build fails with "'hsa/hsa.h' file not
+  # found". Add rocm-runtime's include dir to the bitcode flags.
+  postPatch = ''
+    substituteInPlace cmake/DeviceBitcode.cmake \
+      --replace-fail \
+        '-Xclang -mcode-object-version=none' \
+        '-Xclang -mcode-object-version=none
+    -I${rocm-runtime}/include'
+  '';
 
   cmakeFlags = [
     (lib.cmakeBool "CMAKE_POSITION_INDEPENDENT_CODE" true)
