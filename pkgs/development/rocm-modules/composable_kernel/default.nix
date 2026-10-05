@@ -7,6 +7,17 @@
 let
   inherit (composable_kernel_base) miOpenReqLibsOnly;
   parts = {
+    # therock-10.0 restructured CK: the per-op conv instance libraries became
+    # OBJECT libraries aggregated into a single STATIC target `device_conv_operations`
+    # (library/src/tensor_operation_instance/gpu/CMakeLists.txt). Under
+    # MIOPEN_REQ_LIBS_ONLY (our default) that umbrella is the ONLY conv target built
+    # (device_other/gemm/mha/contraction are gated NOT MIOPEN_REQ_LIBS_ONLY, so the
+    # old per-instance + quantization chunks no longer exist as make targets).
+    conv_ops = {
+      targets = [
+        "device_conv_operations"
+      ];
+    };
     _mha = {
       enabled = !miOpenReqLibsOnly;
       # mha takes ~3hrs on 64 cores on an EPYC milan system at ~2.5GHz
@@ -41,63 +52,6 @@ let
       onlyFor = [
         "gfx942"
         "gfx950"
-      ];
-    };
-    grouped_conv_bwd = {
-      targets = [
-        "device_grouped_conv1d_bwd_weight_instance"
-        "device_grouped_conv2d_bwd_data_instance"
-        "device_grouped_conv2d_bwd_weight_instance"
-      ];
-    };
-    grouped_conv_fwd = {
-      targets = [
-        "device_grouped_conv1d_fwd_instance"
-        "device_grouped_conv2d_fwd_instance"
-        "device_grouped_conv2d_fwd_bias_bnorm_clamp_instance"
-        "device_grouped_conv2d_fwd_bias_clamp_instance"
-        "device_grouped_conv2d_fwd_clamp_instance"
-        "device_grouped_conv2d_fwd_dynamic_op_instance"
-      ];
-    };
-    grouped_conv_bwd_3d1 = {
-      targets = [
-        "device_grouped_conv3d_bwd_data_instance"
-        "device_grouped_conv3d_bwd_data_bilinear_instance"
-        "device_grouped_conv3d_bwd_data_scale_instance"
-      ];
-    };
-    grouped_conv_bwd_3d2 = {
-      targets = [
-        "device_grouped_conv3d_bwd_weight_instance"
-        "device_grouped_conv3d_bwd_weight_bilinear_instance"
-        "device_grouped_conv3d_bwd_weight_scale_instance"
-      ];
-    };
-    grouped_conv_fwd_3d1 = {
-      targets = [
-        "device_grouped_conv3d_fwd_instance"
-        "device_grouped_conv3d_fwd_clamp_instance"
-        "device_grouped_conv3d_fwd_bias_bnorm_clamp_instance"
-        "device_grouped_conv3d_fwd_bias_clamp_instance"
-        "device_grouped_conv3d_fwd_bilinear_instance"
-        "device_grouped_conv3d_fwd_convinvscale_instance"
-        "device_grouped_conv3d_fwd_convscale_instance"
-        "device_grouped_conv3d_fwd_convscale_add_instance"
-      ];
-    };
-    grouped_conv_fwd_3d2 = {
-      targets = [
-        "device_grouped_conv3d_fwd_convscale_relu_instance"
-        "device_grouped_conv3d_fwd_dynamic_op_instance"
-        "device_grouped_conv3d_fwd_scale_instance"
-        "device_grouped_conv3d_fwd_scaleadd_ab_instance"
-        "device_grouped_conv3d_fwd_scaleadd_scaleadd_relu_instance"
-      ];
-    };
-    grouped_conv_fwd_nd = {
-      targets = [
-        "device_grouped_convnd_bwd_weight_instance"
       ];
     };
     batched_gemm1 = {
@@ -167,16 +121,6 @@ let
         "device_gemm_streamk_instance"
       ];
     };
-    conv = {
-      targets = [
-        "device_conv1d_bwd_data_instance"
-        "device_conv2d_bwd_data_instance"
-        "device_conv2d_fwd_instance"
-        "device_conv2d_fwd_bias_relu_instance"
-        "device_conv2d_fwd_bias_relu_add_instance"
-        "device_conv3d_bwd_data_instance"
-      ];
-    };
     pool = {
       enabled = !miOpenReqLibsOnly;
       targets = [
@@ -185,11 +129,6 @@ let
         "device_pool2d_fwd_instance"
         "device_pool3d_fwd_instance"
         "device_max_pool_bwd_instance"
-      ];
-    };
-    other0 = {
-      targets = [
-        "device_quantization_instance"
       ];
     };
     other1 = {
