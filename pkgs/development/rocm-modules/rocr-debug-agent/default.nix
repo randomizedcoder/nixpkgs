@@ -12,14 +12,20 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocr-debug-agent";
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
-    repo = "rocr_debug_agent";
-    tag = "rocm-${finalAttrs.version}";
-    hash = "sha256-w2Zg4kpuKy68DkVGsBTUsjRZoV/Y/Z3Q8s0oSIR3Ask=";
+    # therock-10.0: moved into the rocm-systems monorepo
+    repo = "rocm-systems";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
+    sparseCheckout = [
+      "projects/rocr-debug-agent"
+      "shared"
+    ];
+    hash = "sha256-XJ9NGk7Xb5syTrQ3NtUWdjQpMbJXGlcGOGDvYlGLIvA=";
   };
+  sourceRoot = "${finalAttrs.src.name}/projects/rocr-debug-agent";
 
   nativeBuildInputs = [
     cmake
