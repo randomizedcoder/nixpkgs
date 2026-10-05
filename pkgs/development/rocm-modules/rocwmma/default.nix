@@ -5,7 +5,7 @@
   rocmUpdateScript,
   cmake,
   rocm-cmake,
-  rocm-smi,
+  amdsmi,
   clr,
   openmp,
   gtest,
@@ -19,7 +19,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocwmma";
-  version = "7.2.3";
+  version = "10.0.0";
 
   outputs = [
     "out"
@@ -37,18 +37,19 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-libraries";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/rocwmma"
       "shared"
     ];
-    hash = "sha256-eoF8a7zknpgvDOSDzolOrdtszUJ5tC7Ur2sRShiQEO0=";
+    hash = "sha256-vN0s7lDUK9lEi3jClGZzouWi9Vej0v/gsTe707m+oE0=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocwmma";
 
-  patches = lib.optionals (buildTests || buildBenchmarks) [
-    ./0000-dont-fetch-googletest.patch
-  ];
+  # therock-10.0 rocWMMA replaced the hardcoded FetchContent(googletest) with an
+  # upstream ROCWMMA_USE_SYSTEM_GOOGLETEST option (see cmakeFlags), so the old
+  # 0000-dont-fetch-googletest.patch is obsolete and no longer applies.
+  patches = [ ];
 
   nativeBuildInputs = [
     cmake
@@ -60,7 +61,8 @@ stdenv.mkDerivation (finalAttrs: {
     openmp
   ]
   ++ lib.optionals (buildTests || buildBenchmarks) [
-    rocm-smi
+    # therock-10.0 rocWMMA benchmark tests find_package(amd_smi) (was rocm_smi)
+    amdsmi
     gtest
     rocblas
   ];
@@ -73,6 +75,10 @@ stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_INSTALL_BINDIR=bin"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
+  ]
+  ++ lib.optionals (buildTests || buildBenchmarks) [
+    # Use nixpkgs gtest instead of the upstream FetchContent googletest download
+    "-DROCWMMA_USE_SYSTEM_GOOGLETEST=ON"
   ]
   ++ lib.optionals (gpuTargets != [ ]) [
     "-DGPU_TARGETS=${lib.concatStringsSep ";" gpuTargets}"
