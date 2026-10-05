@@ -11,17 +11,17 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocm-smi";
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-systems";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/rocm-smi-lib"
       "shared"
     ];
-    hash = "sha256-Si8SbeVKUBtqk6h2QJ9ssQV68bLq6TvESrYXJuArHd8=";
+    hash = "sha256-pFVTw49W2P0dp5hcX2CTXOPFotNhX6o9jZ0XJpY9ZcM=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocm-smi-lib";
 

@@ -15,7 +15,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocthrust";
-  version = "7.2.3";
+  version = "10.0.0";
 
   outputs = [
     "out"
@@ -30,12 +30,12 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-libraries";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/rocthrust"
       "shared"
     ];
-    hash = "sha256-wHEgpmBZCYtvp+OyebrRyfoFz3WQyKWfHPrdzQVL8lY=";
+    hash = "sha256-C2jS7pCwjhmArhNgY6unYcdZ5OA04nzRjt1f93DAbp8=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocthrust";
 

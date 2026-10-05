@@ -14,7 +14,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "hiprand";
-  version = "7.2.3";
+  version = "10.0.0";
 
   outputs = [
     "out"
@@ -26,12 +26,12 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-libraries";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/hiprand"
       "shared"
     ];
-    hash = "sha256-bjcwjN1dNukhoDAbiSpATlK6dtAwM8bOJTe3IjhdwwY=";
+    hash = "sha256-Cl2UP6n3Rd1gJmRbTvJjU+NjkF1dS3zzikoAIgmXw5U=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hiprand";
 

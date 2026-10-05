@@ -19,14 +19,20 @@
 stdenv.mkDerivation (finalAttrs: {
   pname = "rpp-${if useCPU then "cpu" else "hip"}";
 
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
-    repo = "rpp";
-    tag = "rocm-${finalAttrs.version}";
-    hash = "sha256-6e4JHKFC2dvtSGo9xbQKzIdUwlHB09pr5C/5xHwP3l4=";
+    # therock-10.0: rpp moved into the rocm-libraries monorepo
+    repo = "rocm-libraries";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
+    sparseCheckout = [
+      "projects/rpp"
+      "shared"
+    ];
+    hash = "sha256-IMZs/Llv2WBTP4CbWMhJTgTdTAG8orzjg5TjRDJNh4s=";
   };
+  sourceRoot = "${finalAttrs.src.name}/projects/rpp";
 
   nativeBuildInputs = [
     cmake

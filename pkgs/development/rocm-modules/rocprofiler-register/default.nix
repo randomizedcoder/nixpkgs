@@ -17,42 +17,25 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocprofiler-register";
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-systems";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/rocprofiler-register"
       "shared"
     ];
-    hash = "sha256-XhxED3LHIjxBcSVyyEC3pgg0fyKyfKtHkF7umExSboM=";
+    hash = "sha256-DmWJSQYopfkgVHFopPRthyCue87CFtPEJeClckK+GoU=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocprofiler-register";
 
-  patches = [
-    (fetchpatch {
-      # [rocprofiler-sdk][rocprofiler-register] add CPackComponent
-      url = "https://github.com/ROCm/rocm-systems/commit/ef7253365c420ca486f074b9e9119a222e30fea0.patch";
-      hash = "sha256-dwqvZ4AaTcOk2mSnxgHp/NbhjlD8W6KVz1H5ZF4i/Tw=";
-      relative = "projects/rocprofiler-register";
-    })
-    (fetchpatch {
-      # [rocprofiler-register] Fix compilation with system fmt/glog
-      url = "https://github.com/ROCm/rocm-systems/commit/c8ad2522083c6e00539ce5c1c22df766c20084fb.patch";
-      hash = "sha256-VloRKV6kUzIfIInltx/bV1EM0FUfeQZrVAx6qgdsLyg=";
-      relative = "projects/rocprofiler-register";
-    })
-    (fetchpatch {
-      # fix(rocprofiler-sdk): include fmt/format.h instead of fmt/core.h for fmt::format
-      # fmt 12.2.0 changes the meaning of fmt/core.h so it no longer includes
-      # fmt::format, so this upstream commit switches to the correct header.
-      url = "https://github.com/ROCm/rocm-systems/commit/e2f588592ecfb0653ed5b3078753186325adf70a.patch";
-      hash = "sha256-ip/s7tmUptcXMen3fyQJYKiZKwoe3SH0XqTVb0YBA7k=";
-      relative = "projects/rocprofiler-register";
-    })
-  ];
+  # NOTE(rocm-10): dropped 3 rocm-systems fetchpatches now upstream in
+  # therock-10.0 — ef7253365 (add CPackComponent), c8ad2522 (system fmt/glog:
+  # find_package(fmt/glog) already in external/CMakeLists.txt), e2f588592
+  # (fmt/core.h -> fmt/format.h: sources already use fmt/format.h).
+  patches = [ ];
 
   nativeBuildInputs = [
     cmake

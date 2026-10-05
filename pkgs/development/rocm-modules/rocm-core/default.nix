@@ -17,17 +17,17 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocm-core";
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-systems";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/rocm-core"
       "shared"
     ];
-    hash = "sha256-Y3WuDwruD5zKN2epwfUCZAGq5vgxCT27awJN8JxmOsY=";
+    hash = "sha256-7rPhCKGi5vcx3LsqnffCZK6n1lL5hjzMreot2gk/v+c=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocm-core";
 

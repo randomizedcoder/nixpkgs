@@ -18,18 +18,18 @@
 
 buildPythonPackage (finalAttrs: {
   pname = "tensile";
-  version = "7.2.3";
+  version = "10.0.0";
   pyproject = true;
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-libraries";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "shared/tensile"
       "shared"
     ];
-    hash = "sha256-sYudPiEPGeZLmf6+3XfQDZqRXiKgRsGPucApzYwlGV8=";
+    hash = "sha256-NFeXnmCOpBlbWivmc1Q0/nU8VDqO1y82jMHYWBkKckc=";
   };
   sourceRoot = "${finalAttrs.src.name}/shared/tensile";
 

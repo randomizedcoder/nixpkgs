@@ -70,7 +70,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "clr";
-  version = "7.2.3";
+  version = "10.0.0";
 
   outputs = [
     "out"
@@ -83,12 +83,12 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-systems";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/clr"
       "shared"
     ];
-    hash = "sha256-n8yWWDxE36m2NN0cmqHXQy5omYPiYoqnaNbqWm63q3E=";
+    hash = "sha256-MKgP9xrSz/1cRrBYUR669wja6XojKOj5Qp/GEvaUM7Q=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/clr";
 

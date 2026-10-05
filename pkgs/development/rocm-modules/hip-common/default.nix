@@ -7,17 +7,17 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "hip-common";
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-systems";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/hip"
       "shared"
     ];
-    hash = "sha256-orfTXKjcZJ5E73cmXEyltZVYhCQo8FLExVHM3J/rqUM=";
+    hash = "sha256-v30H6y9zgB5B2AzlxJsKu0mbJMxpi3q45bc3+pbbB8M=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hip";
 

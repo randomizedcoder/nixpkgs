@@ -20,7 +20,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocsparse${clr.gpuArchSuffix}";
-  version = "7.2.3";
+  version = "10.0.0";
 
   outputs = [
     "out"
@@ -35,12 +35,12 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-libraries";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
     sparseCheckout = [
       "projects/rocsparse"
       "shared"
     ];
-    hash = "sha256-hkfBTcLig39al2w8zFTSQQnouaou9wlD6VlvIyFTNMg=";
+    hash = "sha256-EJMDypjRu/+v5aj21TAKWpCUsdL80mnEYHCZCf7LpVw=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocsparse";
 
