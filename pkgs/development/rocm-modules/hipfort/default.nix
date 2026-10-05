@@ -10,13 +10,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipfort";
-  version = "7.2.3";
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "hipfort";
     tag = "rocm-${finalAttrs.version}";
-    hash = "sha256-XaB4jauCN41tgD1YHHA2td/yckwfMBemBe/iL0SCxQo=";
+    hash = "sha256-qyBz+zFwJOjjmKFKKw9Cxo7kDDXlMFhPhuJIYykPpDs=";
   };
 
   __structuredAttrs = true;
@@ -42,19 +42,9 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeFeature "CMAKE_INSTALL_INCLUDEDIR" "include")
   ];
 
-  postPatch = ''
-    patchShebangs bin
-
-    substituteInPlace bin/hipfc bin/mymcpu \
-      --replace-fail "/bin/cat" "cat"
-
-    substituteInPlace bin/CMakeLists.txt \
-      --replace-fail "/bin/mkdir" "mkdir" \
-      --replace-fail "/bin/cp" "cp" \
-      --replace-fail "/bin/sed" "sed" \
-      --replace-fail "/bin/chmod" "chmod" \
-      --replace-fail "/bin/ln" "ln"
-  '';
+  # NOTE(rocm-10): hipfort 10.0.0 dropped the bin/ wrapper scripts (hipfc,
+  # mymcpu) entirely — it is now a pure Fortran interface library (lib/, cmake/,
+  # include/), so the old bin/ postPatch is obsolete and no longer applies.
 
   passthru.updateScript = rocmUpdateScript { inherit finalAttrs; };
 
@@ -63,7 +53,6 @@ stdenv.mkDerivation (finalAttrs: {
     homepage = "https://github.com/ROCm/hipfort";
     changelog = "https://github.com/ROCm/hipfort/releases/tag/${finalAttrs.src.tag}";
     license = lib.licenses.mit; # mitx11
-    mainProgram = "hipfc";
     teams = [ lib.teams.rocm ];
     platforms = lib.platforms.linux;
   };
