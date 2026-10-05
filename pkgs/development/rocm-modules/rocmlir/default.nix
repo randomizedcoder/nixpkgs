@@ -42,7 +42,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocmlir${suffix}";
-  version = "7.2.3";
+  version = "10.0.0";
 
   outputs = [
     "out"
@@ -54,8 +54,16 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocMLIR";
-    tag = "rocm-${finalAttrs.version}";
-    hash = "sha256-0OvQT8pX6GbEqUwuauKGI66IHw8dsnt5mIijnzYyiRc=";
+    # rocMLIR has no ROCm 10.0 tag (upstream is still on rocm-7.2.x, branch
+    # release/rocm-rel-7.2). ROCm 10.0's AMDMIGraphX (rocm-10.0) pins this exact
+    # rocMLIR commit in its requirements.txt
+    # (ROCm/rocMLIR@2e1e7ab -DBUILD_FAT_LIBROCKCOMPILER=On -DLLVM_INCLUDE_TESTS=Off),
+    # so we track that commit directly rather than a tag. rocMLIR's own project
+    # version at this commit is 2.0.0; `version` above is the ROCm-set version.
+    # NOTE: pinning a bare commit means passthru.updateScript (page = "tags") can no
+    # longer bump this automatically until rocMLIR publishes a rocm-10.x tag.
+    rev = "2e1e7abf4ec789e74e49e42018f852ea66e5ef85";
+    hash = "sha256-ukU6eYAOhIVWhLHYfyW/n1dwz9/Vpc/UKK8uKHpMqz4=";
   };
 
   nativeBuildInputs = [
@@ -64,6 +72,10 @@ stdenv.mkDerivation (finalAttrs: {
     rocm-cmake
     python3Packages.python
     python3Packages.tomli
+    # rocMLIR's 10.0 commit (2e1e7ab) added Rock Python bindings whose
+    # mlir/lib/Dialect/Rock/utility/Bindings/CMakeLists.txt does find_package(pybind11);
+    # the 7.2.3 tag didn't. Without this the (buildRockCompiler) configure fails.
+    python3Packages.pybind11
   ];
 
   buildInputs = [
