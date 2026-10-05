@@ -150,18 +150,32 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   postPatch = ''
-    export CXXFLAGS+=" -w -isystem${rocmlir}/include/rocmlir -I${half}/include -I${lib.getInclude abseil-cpp'}/include -I${hipblas-common}/include -I${lib.getInclude protobuf}/include"
-    patchShebangs tools
+        export CXXFLAGS+=" -w -isystem${rocmlir}/include/rocmlir -I${half}/include -I${lib.getInclude abseil-cpp'}/include -I${hipblas-common}/include -I${lib.getInclude protobuf}/include"
+        patchShebangs tools
 
-    # `error: '__clang_hip_runtime_wrapper.h' file not found [clang-diagnostic-error]`
-    substituteInPlace CMakeLists.txt \
-      --replace "set(MIGRAPHX_TIDY_ERRORS ALL)" ""
+        # `error: '__clang_hip_runtime_wrapper.h' file not found [clang-diagnostic-error]`
+        substituteInPlace CMakeLists.txt \
+          --replace "set(MIGRAPHX_TIDY_ERRORS ALL)" ""
 
-    # Fix Unicode minus sign (U+2212) in comment that breaks EMBED_USE=CArrays
-    # The embed mechanism generates char[] arrays that can't store unicode −
-    # which has values >127
-    substituteInPlace src/targets/gpu/kernels/include/migraphx/kernels/bit.hpp \
-      --replace-fail "// popcount(~(x | −x))" "// popcount(~(x | -x))"
+        # AMDMIGraphX's rocm-10.0 tag calls rocm_add_version_resource (src/CMakeLists.txt),
+        # a macro only present in rocm-cmake newer than the therock-10.0/10.1 tags the rest
+        # of the set builds against. Upstream it merely emits a Windows .rc VERSIONINFO
+        # resource (its whole body is guarded by `if(WIN32)`), so it is a no-op on Linux.
+        # Provide a guarded stub until rocm-cmake ships it on a release tag.
+        substituteInPlace CMakeLists.txt \
+          --replace-fail \
+            'find_package(ROCmCMakeBuildTools REQUIRED)' \
+            'find_package(ROCmCMakeBuildTools REQUIRED)
+    if(NOT COMMAND rocm_add_version_resource)
+      function(rocm_add_version_resource)
+      endfunction()
+    endif()'
+
+        # Fix Unicode minus sign (U+2212) in comment that breaks EMBED_USE=CArrays
+        # The embed mechanism generates char[] arrays that can't store unicode −
+        # which has values >127
+        substituteInPlace src/targets/gpu/kernels/include/migraphx/kernels/bit.hpp \
+          --replace-fail "// popcount(~(x | −x))" "// popcount(~(x | -x))"
   ''
   + lib.optionalString (!buildDocs) ''
     substituteInPlace CMakeLists.txt \
