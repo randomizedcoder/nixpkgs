@@ -134,31 +134,31 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   postPatch = ''
-    # NixOS' ROCm distribution does not support libomptarget yet
-    substituteInPlace samples/CMakeLists.txt \
-      --replace-fail 'add_subdirectory(openmp_target)' '# add_subdirectory(openmp_target)'
-    substituteInPlace tests/CMakeLists.txt \
-      --replace-fail 'add_subdirectory(openmp-tools)' '# add_subdirectory(openmp-tools)'
-    substituteInPlace tests/bin/CMakeLists.txt \
-      --replace-fail 'add_subdirectory(openmp)' '# add_subdirectory(openmp)'
+        # NixOS' ROCm distribution does not support libomptarget yet
+        substituteInPlace samples/CMakeLists.txt \
+          --replace-fail 'add_subdirectory(openmp_target)' '# add_subdirectory(openmp_target)'
+        substituteInPlace tests/CMakeLists.txt \
+          --replace-fail 'add_subdirectory(openmp-tools)' '# add_subdirectory(openmp-tools)'
+        substituteInPlace tests/bin/CMakeLists.txt \
+          --replace-fail 'add_subdirectory(openmp)' '# add_subdirectory(openmp)'
 
-    # This requires building perfetto's trace-processor-shell via a weird external script
-    substituteInPlace tests/CMakeLists.txt \
-      --replace-fail 'add_subdirectory(pytest-packages)' ""
+        # This requires building perfetto's trace-processor-shell via a weird external script
+        substituteInPlace tests/CMakeLists.txt \
+          --replace-fail 'add_subdirectory(pytest-packages)' ""
 
-    # therock-10.0 has bare system includes (`<sqlite3.h>` in the output/sql +
-    # python-binding sources, `<libdrm/amdgpu*.h>` in the vendored aqlprofile)
-    # that assume a distro-style /usr/include. nixpkgs keeps those headers in the
-    # packages' dev outputs, and the rocm-toolchain clang used here
-    # (-DCMAKE_CXX_COMPILER=clang++, unwrapped) ignores NIX_CFLAGS_COMPILE, so add
-    # them as a real CMake -isystem at the top of the tree. (A global
-    # -DCMAKE_CXX_FLAGS instead would clobber abseil's C++-standard detection.)
-    substituteInPlace CMakeLists.txt \
-      --replace-fail 'add_subdirectory(external)' \
-        'include_directories(SYSTEM ${lib.getDev sqlite}/include ${lib.getDev libdrm}/include)
-add_subdirectory(external)'
+        # therock-10.0 has bare system includes (`<sqlite3.h>` in the output/sql +
+        # python-binding sources, `<libdrm/amdgpu*.h>` in the vendored aqlprofile)
+        # that assume a distro-style /usr/include. nixpkgs keeps those headers in the
+        # packages' dev outputs, and the rocm-toolchain clang used here
+        # (-DCMAKE_CXX_COMPILER=clang++, unwrapped) ignores NIX_CFLAGS_COMPILE, so add
+        # them as a real CMake -isystem at the top of the tree. (A global
+        # -DCMAKE_CXX_FLAGS instead would clobber abseil's C++-standard detection.)
+        substituteInPlace CMakeLists.txt \
+          --replace-fail 'add_subdirectory(external)' \
+            'include_directories(SYSTEM ${lib.getDev sqlite}/include ${lib.getDev libdrm}/include)
+    add_subdirectory(external)'
 
-    patchShebangs source/libexec/rocprofiler-sdk/rocprofiler-sdk-launch-compiler/rocprofiler-sdk-launch-compiler.sh
+        patchShebangs source/libexec/rocprofiler-sdk/rocprofiler-sdk-launch-compiler/rocprofiler-sdk-launch-compiler.sh
   '';
 
   cmakeFlags = [
