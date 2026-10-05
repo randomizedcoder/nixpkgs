@@ -5,11 +5,10 @@
   rocmUpdateScript,
   cmake,
   rocm-cmake,
-  rocm-smi,
+  amdsmi,
   rocm-core,
   pkg-config,
   clr,
-  mscclpp,
   perl,
   hipify,
   python3,
@@ -40,7 +39,7 @@ in
 # infiniband ib_peer_mem support isn't in the mainline kernel but is carried by some distros
 stdenv.mkDerivation (finalAttrs: {
   pname = "rccl${clr.gpuArchSuffix}";
-  version = "7.2.3";
+  version = "10.0.0";
 
   outputs = [
     "out"
@@ -49,17 +48,26 @@ stdenv.mkDerivation (finalAttrs: {
     "test"
   ];
 
+  # NOTE(rocm-10): dropped fix_hw_reg_hw_id_gt_gfx10.patch. Its src/device/common.h
+  # hunk targeted a __trace_hwreg() macro that therock-10.0 removed when it
+  # restructured collTrace (the macro no longer exists); the other hunk touches
+  # tools/JitterBench (a benchmark not built in the default library build).
+  # Re-examine JitterBench's HW_REG_HW_ID1 read if tools/tests are ever enabled.
   patches = [
     ./rccl-test-missing-iomanip.diff
-    ./fix_hw_reg_hw_id_gt_gfx10.patch
   ];
 
   src = fetchFromGitHub {
     owner = "ROCm";
-    repo = "rccl";
-    tag = "rocm-${finalAttrs.version}";
-    hash = "sha256-A1IQYIDWqu3JLiPQ70G52s1/0ZweQxFlgMUH81qJWmU=";
+    repo = "rocm-systems";
+    tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
+    sparseCheckout = [
+      "projects/rccl"
+      "shared"
+    ];
+    hash = "sha256-jiOLmJC+WeJnnxOVlTfEHvV8+ApygUW5Crtx4lBX6Xg=";
   };
+  sourceRoot = "${finalAttrs.src.name}/projects/rccl";
 
   requiredSystemFeatures = [ "big-parallel" ]; # Very resource intensive LTO
 
@@ -75,13 +83,15 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   buildInputs = [
-    rocm-smi
+    # therock-10.0 rccl switched rocm_smi -> amd_smi (CMakeLists.txt:422
+    # find_package(amd_smi) gated on ROCM_VERSION >= 71100; ours = 100000).
+    # SMI is lazily dlopen'd at runtime; headers needed for the fabric probe.
+    amdsmi
     fmt
     gtest
     roctracer
     rocprofiler
     rocprofiler-register
-    mscclpp
   ]
   ++ lib.optionals buildTests [
     chrpath
@@ -96,9 +106,8 @@ stdenv.mkDerivation (finalAttrs: {
     "-DROCM_VERSION=${rocm-core.ROCM_LIBPATCH_VERSION}"
     "-DBUILD_BFD=OFF" # Can't get it to detect bfd.h
     "-DENABLE_MSCCL_KERNEL=ON"
-    # FIXME: this is still running a download because if(NOT mscclpp_nccl_FOUND) is commented out T_T
-    "-DENABLE_MSCCLPP=OFF"
-    #"-DMSCCLPP_ROOT=${mscclpp}"
+    # NOTE(rocm-10): therock-10.0 rccl dropped the MSCCLPP integration entirely
+    # (no mscclpp refs in CMakeLists), so ENABLE_MSCCLPP / MSCCLPP_ROOT are gone.
     # Manually define CMAKE_INSTALL_<DIR>
     # See: https://github.com/NixOS/nixpkgs/pull/197838
     "-DCMAKE_INSTALL_BINDIR=bin"
@@ -121,10 +130,6 @@ stdenv.mkDerivation (finalAttrs: {
   env.LDFLAGS = "${san}";
   postPatch = ''
     patchShebangs src tools
-    substituteInPlace CMakeLists.txt \
-      --replace-fail '${"\${HOST_OS_ID}"}' '"ubuntu"' \
-      --replace-fail 'target_include_directories(rccl PRIVATE ''${ROCM_SMI_INCLUDE_DIR})' \
-      'target_include_directories(rccl PRIVATE ''${ROCM_SMI_INCLUDE_DIRS})'
   '';
 
   postInstall =
