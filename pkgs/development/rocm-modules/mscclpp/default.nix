@@ -8,6 +8,8 @@
 }:
 stdenv.mkDerivation {
   pname = "mscclpp";
+  # NOTE(rocm-10): microsoft/mscclpp is versioned independently of ROCm (no
+  # rocm-*/therock-* tags); pinned by commit and unaffected by the 10.0 bump.
   version = "unstable-2024-12-13";
   src = fetchFromGitHub {
     owner = "microsoft";

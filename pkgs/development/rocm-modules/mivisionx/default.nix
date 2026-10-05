@@ -40,6 +40,8 @@ stdenv.mkDerivation (finalAttrs: {
         "cpu"
     );
 
+  # NOTE(rocm-10): kept at rocm-7.2.3 — MIVisionX has no therock-10.0 / rocm-10.x
+  # tag upstream (newest is rocm-7.2.4). Revisit when AMD tags a 10.x release.
   version = "7.2.3";
 
   src = fetchFromGitHub {
