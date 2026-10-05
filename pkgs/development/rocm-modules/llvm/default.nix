@@ -2,7 +2,7 @@
   lib,
   stdenv,
   # LLVM version closest to ROCm fork to override
-  llvmPackages_22,
+  llvmPackages_23,
   overrideCC,
   lndir,
   rocm-device-libs,
@@ -22,8 +22,8 @@
   # TODO: Should also apply to downstream packages which use rocmClangStdenv?
   profilableStdenv ? false,
   # FIXME: proper two-stage bootstrap & PGO/BOLT/LTO
-  # LTO currently disabled due to llvm 22 vs 22.1 bitcode mismatch between
-  # llvmPackages_22 (22.1) and ROCm LLVM (22.0). Uses new bitcode attr
+  # LTO currently disabled due to bitcode mismatch between the nixpkgs
+  # llvmPackages_23 and ROCm LLVM (23.0.0git). Uses new bitcode attr
   # 105 nocreateundeforpoison fails to link hipify.
   # Whether to use LTO when building the ROCm toolchain
   # Slows down this toolchain's build, for typical ROCm usecase
@@ -36,12 +36,14 @@
 }:
 
 let
-  version = "7.2.3";
+  version = "10.0.0";
+  # ROCm/TheRock two-component tag (therock-<major>.<minor>) for all monorepo/llvm sources
+  srcTag = "therock-${lib.versions.majorMinor version}";
   # major version of this should be the clang version ROCm forked from
-  rocmLlvmVersion = "22.0.0-rocm";
+  rocmLlvmVersion = "23.0.0-rocm";
   # llvmPackages_base version should match rocmLlvmVersion
   # so libllvm's bitcode is compatible with the built toolchain
-  llvmPackages_base = llvmPackages_22;
+  llvmPackages_base = llvmPackages_23;
   llvmPackagesNoBintools = llvmPackages_base.override {
     bootBintools = null;
     bootBintoolsNoLibc = null;
@@ -117,8 +119,8 @@ let
   llvmSrc = fetchFromGitHub {
     owner = "ROCm";
     repo = "llvm-project";
-    tag = "rocm-${version}";
-    hash = "sha256-TwFvQimbax2E37ZC/52lNkHXCgyBNfSGDBaqmas2x/s=";
+    tag = srcTag;
+    hash = "sha256-s2nBt1Hhc03vtosrUaTr+OBCTWsCfZk5GDmziYlCE54=";
   };
   llvmMajorVersion = lib.versions.major rocmLlvmVersion;
   # An llvmPackages (pkgs/development/compilers/llvm/) built from ROCm LLVM's source tree
@@ -253,13 +255,13 @@ let
     # error: '__COUNTER__' is a C2y extension [-Werror,-Wc2y-extensions]
     (lib.cmakeBool "LLVM_INCLUDE_BENCHMARKS" false)
     # LLVM tries to call git to embed VCS info if FORCE_VC_ aren't set
-    (lib.cmakeFeature "LLVM_FORCE_VC_REVISION" "rocm-${version}")
+    (lib.cmakeFeature "LLVM_FORCE_VC_REVISION" srcTag)
     (lib.cmakeFeature "LLVM_FORCE_VC_REPOSITORY" "https://github.com/ROCm/llvm-project")
     (lib.cmakeFeature "LLVM_VERSION_SUFFIX" "")
     (lib.cmakeBool "LLVM_ENABLE_LIBCXX" withLibcxx)
     (lib.cmakeFeature "CLANG_DEFAULT_CXX_STDLIB" (if withLibcxx then "libc++" else "libstdc++"))
     (lib.cmakeFeature "CLANG_VENDOR" "nixpkgs-AMD")
-    (lib.cmakeFeature "CLANG_REPOSITORY_STRING" "https://github.com/ROCm/llvm-project/tree/rocm-${version}")
+    (lib.cmakeFeature "CLANG_REPOSITORY_STRING" "https://github.com/ROCm/llvm-project/tree/${srcTag}")
   ]
   ++ lib.optionals withLibcxx [
     (lib.cmakeFeature "CLANG_DEFAULT_RTLIB" "compiler-rt")
@@ -294,81 +296,18 @@ in
 overrideLlvmPackagesRocm (s: {
   libllvm = (s.prev.libllvm.override { }).overrideAttrs (old: {
     patches = [
-      # Backport select ptr combine fixes so our LLVM 22 sdag fix backport can apply
-      (fetchpatch {
-        name = "amdgpu-add-baseline-load-select-ptr-combine-test.patch";
-        url = "https://github.com/llvm/llvm-project/commit/ac27b2455ad7c89cc1f928de7beb05933a035031.patch";
-        relative = "llvm";
-        hash = "sha256-1mine1h/oqnn2tKDYW4FntyZXu/foyifrKGkqKOHrPg=";
-      })
-      (fetchpatch {
-        name = "amdgpu-fix-treating-divergent-loads-as-uniform.patch";
-        url = "https://github.com/llvm/llvm-project/commit/d3c3c6bab5df051d9db12ea96add2211df9d81be.patch";
-        relative = "llvm";
-        hash = "sha256-9VB77d4d+nwX8s+JBq1PXmbmqT7oD6lRC0uDIrTgjjo=";
-      })
-      (fetchpatch {
-        name = "dag-allow-select-ptr-combine-for-non-0-address-spaces.patch";
-        url = "https://github.com/llvm/llvm-project/commit/0e1cb2de90aafa1d5dbd46fc9e6c4e743700fa8b.patch";
-        relative = "llvm";
-        hash = "sha256-6Pj3pRESaho60YhXWwaQxEKteSuziZseeT4FbZqZANk=";
-      })
-    ]
-    # https://github.com/NixOS/nixpkgs/pull/564039 introduces minimal-arm64e_x1-support.patch that depends on llvm 22.1.0
-    # Patches to clang, compiler-rt-libc, and these patches bridge the gap between llvm 22.0.0 and ~22.1.8
-    # arm64e_x1: Can be removed when upgrading to rocm 10
-    ++ [
-      (fetchpatch {
-        name = "wasm-add-wasm32-linux-muslwali-target.patch";
-        url = "https://github.com/llvm/llvm-project/commit/7e7c923b5890e62f4b5920c2f8a2e51f586a186c.patch";
-        relative = "llvm";
-        hash = "sha256-KbM7M4osxaaxkn5UN+csNm+aKvaWgJ0KQnKHHpI+Qxo=";
-      })
-      (fetchpatch {
-        name = "adt-allow-arbitrary-number-of-cases-in-stringswitch.patch";
-        url = "https://github.com/llvm/llvm-project/commit/8642762ac356f0b8432b78d7a32c1f5213e494b3.patch";
-        relative = "llvm";
-        hash = "sha256-aQBmMSJ+aunE7HLpfIizBH7Be1kmcN6nxUk2sV9d3Qo=";
-      })
-      (fetchpatch {
-        name = "adt-migrate-stringswitch-cases-to-new-overload.patch";
-        url = "https://github.com/llvm/llvm-project/commit/2ed7baafc3bf5b4321e3f77dfb1ce291e62bcadc.patch";
-        relative = "llvm";
-        hash = "sha256-cV9POhuJFCnjCdPL6Lym2cmKLeW/2k34N2rwauxU7MA=";
-      })
-      (fetchpatch {
-        name = "lfi-introduce-aarch64-lfi-target.patch";
-        url = "https://github.com/llvm/llvm-project/commit/2c05ae4b8f85927d55f862fdf61bea564e2ea944.patch";
-        relative = "llvm";
-        hash = "sha256-yxvmZg3BTlIrNeer90cYnF7yuRyraeVg1nbiaRVr+zc=";
-      })
+      # NOTE(rocm-10): dropped 3 select-ptr-combine backports (llvm ac27b24 / d3c3c6b /
+      # 0e1cb2d) — already upstream in LLVM 23, they no longer apply and are unneeded.
+      # NOTE(rocm-10): dropped the arm64e_x1 patch group that upstream (nixpkgs#564039)
+      # adds to the base llvm/compiler-rt (wasm32-muslwali / stringswitch / aarch64-lfi) —
+      # it bridges base LLVM 22.0->22.1.8 and is annotated "Can be removed when upgrading
+      # to rocm 10"; this ROCm LLVM is 23-based, so the lfi hunks apply reversed.
     ]
     ++ old.patches
     ++ [
       ./perf-increase-namestring-size.patch
-      # v64i8 shuffle lowering inf loop on VBMI targets, hangs whisper-cpp etc
-      # https://github.com/NixOS/nixpkgs/issues/497745
-      (fetchpatch {
-        # https://github.com/llvm/llvm-project/pull/182832
-        name = "llvm-x86-v64i8-add-test-coverage.patch";
-        url = "https://github.com/llvm/llvm-project/commit/0e3a96d0ec01e3575674d72c4e23bf98affdca28.patch";
-        relative = "llvm";
-        hash = "sha256-qhRkB8Fjz/fNacuGv1OFkiTNOQ0/QQ9p4pLFudwrTzM=";
-      })
-      (fetchpatch {
-        # https://github.com/llvm/llvm-project/pull/182852
-        name = "llvm-x86-v64i8-prefer-vpermv3-on-vbmi.patch";
-        url = "https://github.com/llvm/llvm-project/commit/8f5880d3ae4e5dfc748985d90e5413671028aa3e.patch";
-        relative = "llvm";
-        hash = "sha256-4DU6gu/1+iQpzvVYBlTTUKtw77QSRyTja4hdel4D5Cw=";
-      })
-      (fetchpatch {
-        # https://github.com/llvm/llvm-project/pull/183109
-        name = "llvm-x86-v64i8-skip-repeated-mask-lane-permute-on-vbmi.patch";
-        url = "https://github.com/llvm/llvm-project/commit/1b9fea021840f17c41ea980300d0fc45e7285909.patch";
-        relative = "llvm";
-        hash = "sha256-9Akm78QQr8BIMrVWwDG3poWS1HuQ0hpIQWfke3oADgg=";
-      })
+      # NOTE(rocm-10): dropped 3 v64i8 VBMI shuffle backports (llvm PRs 182832/182852/183109,
+      # nixpkgs#497745) — the codegen fix is already upstream in LLVM 23 (patch applies reversed).
       # TODO: consider reapplying "Don't include aliases in RegisterClassInfo::IgnoreCSRForAllocOrder"
       # it was reverted as it's a pessimization for non-GPU archs, but this compiler
       # is used mostly for amdgpu
@@ -428,38 +367,9 @@ overrideLlvmPackagesRocm (s: {
         passthru = old.passthru // {
           inherit gcc-prefix;
         };
-        patches = [
-          (fetchpatch {
-            # [clang][cmake] Add option to control scan-build-py installation (#172727)
-            name = "clang-scan-build-py-configurable.patch";
-            url = "https://github.com/llvm/llvm-project/commit/f5759eeb63a3a5ce7d555c13c3126cea84e0c7b1.patch";
-            relative = "clang";
-            hash = "sha256-73IDPGZWKX4vny3x5FJ3/NQw8XRad9UNwfYkvQdMB4s=";
-          })
-        ]
-        # arm64e_x1: Can be removed when upgrading to rocm 10
-        ++ [
-          (fetchpatch {
-            name = "wasm-add-wasm32-linux-muslwali-target.patch";
-            url = "https://github.com/llvm/llvm-project/commit/7e7c923b5890e62f4b5920c2f8a2e51f586a186c.patch";
-            relative = "clang";
-            hash = "sha256-QGqil4rs9wFFa8J25ghWKTE8YG2+AbGG81dt5ReAw9k=";
-          })
-          (fetchpatch {
-            name = "adt-migrate-stringswitch-cases-to-new-overload.patch";
-            url = "https://github.com/llvm/llvm-project/commit/2ed7baafc3bf5b4321e3f77dfb1ce291e62bcadc.patch";
-            relative = "clang";
-            hash = "sha256-w9sS+pwawHqxGkTAWMinzF1r9ZyWMTmI119X/NdQoc8=";
-          })
-          (fetchpatch {
-            name = "lfi-introduce-aarch64-lfi-target.patch";
-            url = "https://github.com/llvm/llvm-project/commit/2c05ae4b8f85927d55f862fdf61bea564e2ea944.patch";
-            relative = "clang";
-            hash = "sha256-CcwqLvhDAJSr3dkRDqJKe3pVD2G+w5JMgtGkUx6pUPc=";
-          })
-        ]
-        ++ old.patches
-        ++ [
+        # NOTE(rocm-10): dropped clang-scan-build-py-configurable.patch (llvm PR
+        # #172727) — the scan-build-py install option is upstream in LLVM 23.
+        patches = old.patches ++ [
           # Never add FHS include paths
           ./clang-bodge-ignore-systemwide-incls.diff
           # Prevents builds timing out if a single compiler invocation is very slow but
@@ -474,6 +384,15 @@ overrideLlvmPackagesRocm (s: {
             relative = "clang";
           })
         ];
+        # NOTE(rocm-10): LLVM 23 changed CompressedOffloadBundle::decompress to
+        # take a raw_ostream* (verbose stream) instead of a bool; fix the call
+        # added by the GetBundleIDsInFile patch above to match.
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace lib/Driver/OffloadBundler.cpp \
+            --replace-fail \
+              'CompressedOffloadBundle::decompress(**CodeOrErr, BundlerConfig.Verbose);' \
+              'CompressedOffloadBundle::decompress(**CodeOrErr, BundlerConfig.Verbose ? &llvm::errs() : nullptr);'
+        '';
         # ROCm 7.2 commits 4dda51261a6 "Replace hostexec with upstream rpc"
         # and 2ca1509d6d2 "Put the RTL, Back!", added CGEmitEmissaryExec.cpp which
         # includes ../../openmp/device/include/EmissaryIds.h, breaking
@@ -559,16 +478,6 @@ overrideLlvmPackagesRocm (s: {
       isGNU = false;
     };
   compiler-rt-libc = s.prev.compiler-rt-libc.overrideAttrs (old: {
-    patches = [
-      # arm64e_x1: Can be removed when upgrading to rocm 10
-      (fetchpatch {
-        name = "lfi-introduce-aarch64-lfi-target.patch";
-        url = "https://github.com/llvm/llvm-project/commit/2c05ae4b8f85927d55f862fdf61bea564e2ea944.patch";
-        relative = "compiler-rt";
-        hash = "sha256-xgvVXG+IGa9qwv60ioER6N5nC7XPRPEDHVUrQ5n9RBI=";
-      })
-    ]
-    ++ old.patches;
     meta = old.meta // llvmMeta;
   });
   compiler-rt = s.final.compiler-rt-libc;

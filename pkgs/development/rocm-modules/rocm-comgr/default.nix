@@ -55,7 +55,7 @@ stdenv.mkDerivation (finalAttrs: {
     + ''
       substituteInPlace src/comgr-env.cpp \
         --replace-fail \
-          'return EnvLLVMPath;' \
+          'return EnvLLVMPath ? EnvLLVMPath : "";' \
           'return EnvLLVMPath ? EnvLLVMPath : "${llvm.rocm-toolchain}";'
     '';
 
