@@ -406,6 +406,15 @@ buildPythonPackage.override { inherit stdenv; } (finalAttrs: {
   # sandbox (bad interpreter). Patch its shebang so the codegen step succeeds.
   + lib.optionalString rocmSupport ''
     patchShebangs aten/src/ATen/native/transformers/hip/flash_attn/ck
+
+    # ROCm 10's rocprofiler-sdk ships an OMPT plugin whose one-time init dlopens a
+    # library while libomp holds its (non-recursive) init ticket lock: OpenBLAS's
+    # constructor queries the CPU count -> libomp __kmp_middle_initialize ->
+    # ompt_pre_init -> rocprofiler-sdk -> dlopen -> OpenBLAS ctor -> libomp again,
+    # busy-waiting on the held lock forever, so `import torch` hangs (surfaced as a
+    # pythonImportsCheck hang; also hits runtime, e.g. vllm). Disable the OMPT tool
+    # interface by default (setdefault, so a user wanting rocprofv3 can override).
+    sed -i '/^    if USE_GLOBAL_DEPS:$/i\    os.environ.setdefault("OMP_TOOL", "disabled")' torch/__init__.py
   ''
   # Remove PyTorch's FindCUDAToolkit.cmake and use CMake's default.
   # NOTE: Parts of pytorch rely on unmaintained FindCUDA.cmake with custom patches to support e.g.
