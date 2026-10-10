@@ -687,6 +687,10 @@ stdenv.mkDerivation (
       haskellCompilerName = "ghc-${version}";
 
       bootstrapAvailable = lib.meta.availableOn stdenv.buildPlatform bootPkgs.ghc;
+      # Whether this GHC has to go through LLVM for lack of a native code
+      # generator on targetPlatform. Exposed so consumers can tell a cheap
+      # Haskell toolchain from one that drags in a whole LLVM stack.
+      inherit useLLVM;
     };
 
     meta = {
