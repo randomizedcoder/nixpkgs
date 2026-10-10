@@ -335,8 +335,19 @@ rec {
             (lib.concatStringsSep "," excludeShellChecks)
           ];
           # GHC (=> shellcheck) isn't supported on some platforms (such as risc-v)
-          # but we still want to use writeShellApplication on those platforms
-          shellcheckCommand = lib.optionalString shellcheck-minimal.compiler.bootstrapAvailable ''
+          # but we still want to use writeShellApplication on those platforms.
+          #
+          # bootstrapAvailable alone is not enough. It only says a bootstrap
+          # compiler exists for the build platform, which became true for
+          # riscv64 when a Debian GHC binary gained riscv64-linux in
+          # meta.platforms -- and that silently re-enabled this lint on a
+          # platform where GHC has no native code generator before 9.12
+          # (ghc/common-have-ncg.nix), so building shellcheck pulls in an
+          # entire LLVM stack. Linting a shell script should not cost a
+          # compiler, so skip it wherever GHC needs LLVM.
+          shellcheckCompiler = shellcheck-minimal.compiler;
+          shellcheckUsable = shellcheckCompiler.bootstrapAvailable && !(shellcheckCompiler.useLLVM or false);
+          shellcheckCommand = lib.optionalString shellcheckUsable ''
             # use shellcheck which does not include docs
             # pandoc takes long to build and documentation isn't needed for just running the cli
             ${lib.getExe shellcheck-minimal} ${
