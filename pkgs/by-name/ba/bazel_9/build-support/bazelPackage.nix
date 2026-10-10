@@ -15,6 +15,9 @@
   bazel,
   startupArgs ? [ ],
   commandArgs ? [ ],
+  # Extra command arguments for the final build only, not for the
+  # fixed-output fetch/vendor derivations (e.g. --repository_disable_download).
+  buildCommandArgs ? [ ],
   env ? { },
   serverJavabase ? null,
   registry ? null,
@@ -31,8 +34,34 @@
   nativeBuildInputs ? [ ],
   autoPatchelfIgnoreMissingDeps ? null,
   patches ? [ ],
-}:
+  passthru ? { },
+  # Any other attribute (meta, doInstallCheck, postInstall, ...) is passed
+  # to the final build derivation only, not to the fixed-output ones.
+  ...
+}@args:
 let
+  extraArgs = removeAttrs args [
+    "name"
+    "src"
+    "sourceRoot"
+    "version"
+    "targets"
+    "bazel"
+    "startupArgs"
+    "commandArgs"
+    "buildCommandArgs"
+    "env"
+    "serverJavabase"
+    "registry"
+    "bazelRepoCacheFOD"
+    "bazelVendorDepsFOD"
+    "installPhase"
+    "buildInputs"
+    "nativeBuildInputs"
+    "autoPatchelfIgnoreMissingDeps"
+    "patches"
+    "passthru"
+  ];
   # FOD produced by `bazel fetch`
   # Repo cache contains content-addressed external Bazel dependencies without any patching
   # Potentially this can be nixified via --experimental_repository_resolved_file
@@ -63,6 +92,8 @@ let
           ;
         command = "fetch";
         outputHashMode = "recursive";
+        # The cache is content addressed; fixup must not touch it.
+        dontFixup = true;
         commandArgs = [
           "--repository_cache=repo_cache"
           "--repo_contents_cache="
@@ -146,27 +177,33 @@ let
         }
       );
 
-  package = callPackage ./bazelDerivation.nix { } {
-    inherit
-      name
-      src
-      version
-      sourceRoot
-      env
-      buildInputs
-      nativeBuildInputs
-      patches
-      ;
-    inherit registry bazelRepoCache bazelVendorDeps;
-    inherit
-      bazel
-      targets
-      startupArgs
-      serverJavabase
-      commandArgs
-      ;
-    inherit installPhase;
-    command = "build";
-  };
+  package = callPackage ./bazelDerivation.nix { } (
+    {
+      inherit
+        name
+        src
+        version
+        sourceRoot
+        env
+        buildInputs
+        nativeBuildInputs
+        patches
+        ;
+      inherit registry bazelRepoCache bazelVendorDeps;
+      inherit
+        bazel
+        targets
+        startupArgs
+        serverJavabase
+        ;
+      commandArgs = commandArgs ++ buildCommandArgs;
+      inherit installPhase;
+      command = "build";
+      passthru = passthru // {
+        inherit bazelRepoCache bazelVendorDeps;
+      };
+    }
+    // extraArgs
+  );
 in
-package // { passthru = { inherit bazelRepoCache bazelVendorDeps; }; }
+package
