@@ -161,7 +161,15 @@ stdenv.mkDerivation (
       "python"
     ];
 
-    separateDebugInfo = stdenv.buildPlatform.is64bit; # OOMs on 32 bit
+    # Generating debug info makes the libclang-cpp link peak far above what
+    # small build machines have, so upstream already turns it off on 32-bit.
+    # Pointer width is being used as a proxy for "has enough RAM", and riscv64
+    # is where that proxy breaks: it is 64-bit, so it opts in, but the common
+    # hardware is SBC-class. Measured natively on a 7.7 GiB riscv64 board, the
+    # libclang-cpp link was OOM-killed at 12.6-13.5 GiB of address space for
+    # both LLVM 20 and LLVM 22, and both completed once this was false.
+    # libllvm sets no separateDebugInfo and links a larger dylib there fine.
+    separateDebugInfo = stdenv.buildPlatform.is64bit && !stdenv.buildPlatform.isRiscV;
 
     postInstall = ''
       ln -sv $out/bin/clang $out/bin/cpp
