@@ -277,10 +277,10 @@ bazel_9.buildBazelPackage {
       asl20
     ];
     maintainers = with lib.maintainers; [ randomizedcoder ];
-    # aarch64-linux builds and passes the NixOS test as well, but needs
-    # llvmPackages_22.compiler-rt-no-libc fixed first (submitted separately);
-    # it is enabled once that fix has landed.
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
     mainProgram = "redpanda";
   };
 }
