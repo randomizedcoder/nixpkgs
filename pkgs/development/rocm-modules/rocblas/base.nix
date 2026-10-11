@@ -40,7 +40,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocblas${clr.gpuArchSuffix}";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -50,7 +50,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocblas"
       "shared"
     ];
-    hash = "sha256-8LdII9gSFxuBeJwfQgOW+1/M33nbuR6TwcrD4k6W0Oo=";
+    hash = "sha256-G6vo78dbgP02zQJKsAuFPoncy2rsGkenZWrfvj4mD8M=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocblas";
 
@@ -98,9 +98,20 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   env.CXXFLAGS = "-fopenmp -I${lib.getDev boost}/include -I${hipblas-common}/include -I${roctracer}/include";
-  # Fails to link tests with undefined symbol: cblas_*
+  # Fails to link tests with undefined symbol: cblas_* (cblas comes from amd-blis).
+  # NOTE(rocm-10.1): give cblas an explicit -L. rocBLAS compiles with the *unwrapped*
+  # rocm-toolchain clang, so buildInput lib dirs are not auto-injected into the
+  # clang-linker-wrapper host-link path the way the nixpkgs cc-wrapper would. Under
+  # LLVM-24 the rocm-cmake `rocm_check_target_ids` target-id probe (CMakeLists.txt:150,
+  # runs before find_package(BLAS)) now does a full `--hip-link`, and CMake seeds
+  # CMAKE_EXE_LINKER_FLAGS from $LDFLAGS — so a bare `-lcblas` makes that early probe's
+  # link fail ("unable to find library -lcblas"), which empties the supported-target
+  # list and aborts with "Unsupported target <head arch>". (Only the buildTests/
+  # buildBenchmarks join hits it; the shards build with these off.) Adding amd-blis's
+  # libdir resolves cblas at the probe and at the real client link.
   env.LDFLAGS =
-    "-Wl,--as-needed -lzstd" + lib.optionalString (buildTests || buildBenchmarks) " -lcblas";
+    "-Wl,--as-needed -lzstd"
+    + lib.optionalString (buildTests || buildBenchmarks) " -L${amd-blis}/lib -lcblas";
   env.TENSILE_ROCM_ASSEMBLER_PATH = "${stdenv.cc}/bin/clang++";
 
   cmakeFlags = [
@@ -165,9 +176,13 @@ stdenv.mkDerivation (finalAttrs: {
   ''
   # Fixes sh: line 1: /usr/bin/diff: No such file or directory
   # /build/source/clients/gtest/../include/testing_logging.hpp:1117: Failure
+  # NOTE(rocm-10.1): therock-10.1's testing_logging.hpp no longer shells out to
+  # /usr/bin/diff, so --replace-fail aborted the build ("pattern /usr/bin/diff
+  # doesn't match anything"). Use --replace-quiet so the fix still applies if a
+  # future revision reintroduces the hardcoded path but tolerates its absence.
   + lib.optionalString buildTests ''
     substituteInPlace clients/include/testing_logging.hpp \
-      --replace-fail "/usr/bin/diff" "${lib.getExe' diffutils "diff"}"
+      --replace-quiet "/usr/bin/diff" "${lib.getExe' diffutils "diff"}"
   '';
 
   postInstall =
