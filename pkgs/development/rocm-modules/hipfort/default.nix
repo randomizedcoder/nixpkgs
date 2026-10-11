@@ -10,13 +10,16 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipfort";
-  version = "7.2.3";
+  # Kept at 10.0.0: ROCm/hipfort has no rocm-10.1.0 tag. hipfort is a thin Fortran
+  # interface over HIP with no 10.1-specific ABI dependency, so the 10.0.0 release
+  # works against the 10.1 stack.
+  version = "10.0.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "hipfort";
     tag = "rocm-${finalAttrs.version}";
-    hash = "sha256-XaB4jauCN41tgD1YHHA2td/yckwfMBemBe/iL0SCxQo=";
+    hash = "sha256-qyBz+zFwJOjjmKFKKw9Cxo7kDDXlMFhPhuJIYykPpDs=";
   };
 
   __structuredAttrs = true;
@@ -42,20 +45,6 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeFeature "CMAKE_INSTALL_INCLUDEDIR" "include")
   ];
 
-  postPatch = ''
-    patchShebangs bin
-
-    substituteInPlace bin/hipfc bin/mymcpu \
-      --replace-fail "/bin/cat" "cat"
-
-    substituteInPlace bin/CMakeLists.txt \
-      --replace-fail "/bin/mkdir" "mkdir" \
-      --replace-fail "/bin/cp" "cp" \
-      --replace-fail "/bin/sed" "sed" \
-      --replace-fail "/bin/chmod" "chmod" \
-      --replace-fail "/bin/ln" "ln"
-  '';
-
   passthru.updateScript = rocmUpdateScript { inherit finalAttrs; };
 
   meta = {
@@ -63,7 +52,6 @@ stdenv.mkDerivation (finalAttrs: {
     homepage = "https://github.com/ROCm/hipfort";
     changelog = "https://github.com/ROCm/hipfort/releases/tag/${finalAttrs.src.tag}";
     license = lib.licenses.mit; # mitx11
-    mainProgram = "hipfc";
     teams = [ lib.teams.rocm ];
     platforms = lib.platforms.linux;
   };
