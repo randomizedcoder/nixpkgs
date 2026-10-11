@@ -40,7 +40,9 @@ stdenv.mkDerivation (finalAttrs: {
         "cpu"
     );
 
-  version = "7.2.4";
+  # Kept at rocm-7.2.3: MIVisionX has no ROCm 10.x tag upstream (newest is
+  # rocm-7.2.4). Revisit when AMD tags a 10.x release.
+  version = "7.2.3";
 
   src = fetchFromGitHub {
     owner = "ROCm";
