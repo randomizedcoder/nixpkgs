@@ -24,6 +24,14 @@
 
 assert lib.assertMsg (ompdGdbSupport -> ompdSupport) "OMPD GDB support requires OMPD support!";
 
+let
+  # LLVM 23 removed the legacy standalone OpenMP build (cmake <llvm>/openmp now
+  # aborts with a FATAL_ERROR). OpenMP must be built through the runtimes entry
+  # point (cmake <llvm>/runtimes -DLLVM_ENABLE_RUNTIMES=openmp), which supplies
+  # the project() call and the LLVM cmake modules. Older LLVMs keep the
+  # standalone layout.
+  useRuntimesBuild = lib.versionAtLeast release_version "23";
+in
 stdenv.mkDerivation (finalAttrs: {
   pname = "openmp";
   inherit version;
@@ -36,15 +44,37 @@ stdenv.mkDerivation (finalAttrs: {
           strictDeps = true;
           __structuredAttrs = true;
         }
-        ''
-          mkdir -p "$out"
-          cp -r ${monorepoSrc}/cmake "$out"
-          cp -r ${monorepoSrc}/openmp "$out"
-        ''
+        (
+          if useRuntimesBuild then
+            ''
+              mkdir -p "$out/llvm"
+              cp -r ${monorepoSrc}/cmake "$out"
+              cp -r ${monorepoSrc}/runtimes "$out"
+              cp -r ${monorepoSrc}/openmp "$out"
+              cp -r ${monorepoSrc}/llvm/cmake "$out/llvm/"
+              # openmp/runtime/unittests unconditionally pulls in gtest from
+              # ../third-party/unittest, so it must be present even with tests off.
+              cp -r ${monorepoSrc}/third-party "$out"
+            ''
+          else
+            ''
+              mkdir -p "$out"
+              cp -r ${monorepoSrc}/cmake "$out"
+              cp -r ${monorepoSrc}/openmp "$out"
+            ''
+        )
     else
       src;
 
-  sourceRoot = "${finalAttrs.src.name}/openmp";
+  sourceRoot = "${finalAttrs.src.name}/${if useRuntimesBuild then "runtimes" else "openmp"}";
+
+  # The runtimes build writes generated headers (omp.h, ...) back into the
+  # openmp/ source tree, which is a sibling of sourceRoot and therefore left
+  # read-only by unpackPhase (only sourceRoot gets `chmod u+w`). Make the whole
+  # checkout writable.
+  preConfigure = lib.optionalString useRuntimesBuild ''
+    chmod -R u+w ..
+  '';
 
   outputs = [
     "out"
@@ -88,6 +118,13 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeFeature "CLANG_TOOL" "${clang-unwrapped}/bin/clang")
     (lib.cmakeFeature "OPT_TOOL" "${llvm}/bin/opt")
     (lib.cmakeFeature "LINK_TOOL" "${llvm}/bin/llvm-link")
+  ]
+  ++ lib.optionals useRuntimesBuild [
+    # Build through the runtimes entry point (see useRuntimesBuild above).
+    (lib.cmakeFeature "LLVM_ENABLE_RUNTIMES" "openmp")
+    # We disable tests (doCheck = false); avoid pulling in third-party/unittest,
+    # which the trimmed source tree does not contain.
+    (lib.cmakeBool "LLVM_INCLUDE_TESTS" false)
   ]
   ++ devExtraCmakeFlags;
 
