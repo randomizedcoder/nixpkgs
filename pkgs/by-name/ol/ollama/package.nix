@@ -261,11 +261,17 @@ goBuild (finalAttrs: {
       # (cuda_v12 / cuda_v13 / rocm_v7_1 / rocm_v7_2 / vulkan / cuda_jetpack*).
       rocmMajorVersion = lib.versions.major rocmPackages.clr.version;
       rocmMinorVersion = lib.versions.minor rocmPackages.clr.version;
+      # Ollama's Linux ROCm backend is named rocm_v7_2, including with ROCm 10.
+      rocmLinuxBackend =
+        if lib.versionAtLeast rocmMajorVersion "8" then
+          "rocm_v7_2"
+        else
+          "rocm_v${rocmMajorVersion}_${rocmMinorVersion}";
       llamaBackend =
         if enableCuda then
           "cuda_v${cudaMajorVersion}"
         else if enableRocm then
-          "rocm_v${rocmMajorVersion}_${rocmMinorVersion}"
+          rocmLinuxBackend
         else if enableVulkan then
           "vulkan"
         else
