@@ -137,13 +137,17 @@ effectiveStdenv.mkDerivation (finalAttrs: {
     (cmakeFeature "CMAKE_CUDA_ARCHITECTURES" cudaPackages.flags.cmakeCudaArchitecturesString)
   ]
   ++ optionals rocmSupport [
-    (cmakeFeature "CMAKE_C_COMPILER" "hipcc")
-    (cmakeFeature "CMAKE_CXX_COMPILER" "hipcc")
-
-    # Build all targets supported by rocBLAS. When updating search for TARGET_LIST_ROCM
-    # in https://github.com/ROCmSoftwarePlatform/rocBLAS/blob/develop/CMakeLists.txt
-    # and select the line that matches the current nixpkgs version of rocBLAS.
-    (cmakeFeature "AMDGPU_TARGETS" rocmGpuTargets)
+    # NOTE(rocm-10.1): drive only the HIP language through the ROCm clang, exactly
+    # like llama-cpp (same GGML codebase). Forcing CMAKE_C/CXX_COMPILER=hipcc routed
+    # the whole host build and final link through the *unwrapped* rocm clang, whose
+    # clang-linker-wrapper host-link path never links the OpenMP runtime that GGML's
+    # `-fopenmp` references, so libggml-base.so failed to link with undefined
+    # `__kmpc_*` symbols ("disallowed by --no-allow-shlib-undefined"). Keeping the
+    # host compiler as the wrapped stdenv cc and setting only CMAKE_HIP_COMPILER
+    # links libomp normally while still building GGML_HIP device code with the ROCm
+    # clang. rocmGpuTargets is already a ";"-joined string here.
+    (cmakeFeature "CMAKE_HIP_COMPILER" "${rocmPackages.clr.hipClangPath}/clang++")
+    (cmakeFeature "CMAKE_HIP_ARCHITECTURES" rocmGpuTargets)
   ]
   ++ optionals coreMLSupport [
     (cmakeBool "WHISPER_COREML" true)
