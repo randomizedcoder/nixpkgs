@@ -10,6 +10,11 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipfort";
+  # NOTE(rocm-10.1): kept at 10.0.0 while the rest of rocmPackages moved to 10.1.0.
+  # hipfort's newest release tag upstream is rocm-10.0.0 (ROCm/hipfort has no
+  # rocm-10.1.0 tag), and `tag = "rocm-${finalAttrs.version}"` would resolve to a
+  # non-existent tag at 10.1.0. hipfort is a thin Fortran-interface layer over HIP
+  # with no 10.1 ABI dependency, so the 10.0.0 release works against the 10.1 stack.
   version = "10.0.0";
 
   src = fetchFromGitHub {
