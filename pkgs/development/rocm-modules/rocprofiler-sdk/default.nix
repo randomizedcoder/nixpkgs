@@ -45,7 +45,7 @@
 # rocprofiler-sdk is the home of rocprofv3
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocprofiler-sdk";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -56,7 +56,7 @@ stdenv.mkDerivation (finalAttrs: {
     owner = "ROCm";
     repo = "rocm-systems";
     tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
-    hash = "sha256-N83wTDI6R66pOnDdxYIS9SZy64o1fyHzj7awRJKXNp0=";
+    hash = "sha256-UmYHC+87XIW+Z4WVd7k0MQ9baTvFlq/SgCt9Foy1mPI=";
     fetchSubmodules = true;
     sparseCheckout = [
       "projects/rocprofiler-sdk"
@@ -116,14 +116,22 @@ stdenv.mkDerivation (finalAttrs: {
     # See https://github.com/ROCm/rocm-systems/pull/4721
     # NOTE(rocm-10): dropped 0001 (rename-consumer-test) and 0008
     # (stop-setting-warning-flags) — both only touch test/tests-bin CMakeLists,
-    # and tests are off by default (buildTests ? false). 0002/0003/0004 rebased
-    # for therock-10.0 (0003 trimmed to its one non-test hunk).
-    ./0002-rocprofiler-sdk-add-missing-stl-headers.patch
-    ./0003-rocprofiler-sdk-add-missing-rocprofiler-sdk-rocprofi.patch
-    ./0004-rocprofiler-sdk-fix-find_package-dependency-scoping-.patch
-    ./0005-rocprofiler-sdk-allow-using-system-elfio-dependency.patch
-    ./0006-rocprofiler-sdk-allow-using-system-otf2-dependency.patch
-    ./0007-rocprofiler-sdk-Allow-using-system-json-dependency.patch
+    # and tests are off by default (buildTests ? false).
+    # NOTE(rocm-10.1): dropped 0002, 0003, 0004, 0005, 0006 and 0007 — therock-10.1
+    # merged all of them upstream, so they no longer apply:
+    #   * 0002 (add-missing-stl-headers): the <array>/<memory>/<fstream> adds are
+    #     already in att_lib_wrapper.hpp, rocpd/sql.cpp, counters/metrics.cpp,
+    #     rocattach/auxv.cpp.
+    #   * 0003 (amd-comgr dep): the rocpd python-bindings target already links
+    #     rocprofiler-sdk-amd-comgr (source/lib/python/utilities.cmake:221).
+    #   * 0004 (find_package GLOBAL scoping): CMakeLists already requires CMake
+    #     3.24, and GTest/fmt/yaml-cpp find_package calls already pass GLOBAL.
+    #   * 0005/0006/0007 (system elfio/otf2/json): the ROCPROFILER_BUILD_ELFIO/
+    #     _OTF2/_JSON options + `else() find_package(... REQUIRED GLOBAL)` branches
+    #     are present upstream (cmake/rocprofiler_options.cmake:72-76,
+    #     external/CMakeLists.txt:211-261) — PR #2319 / #1243 landed in 10.1.
+    # The -DROCPROFILER_BUILD_{ELFIO,OTF2,JSON}=false cmakeFlags below still drive
+    # those now-upstream options to use our system elfio/otf2/nlohmann_json.
     # Prevent a segfault on `import torch` (and other consumers that link
     # librocprofiler-sdk for tracing) when OpenMP auto-discovers our
     # ompt_start_tool before glog is initialized. Upstream incidentally fixes
