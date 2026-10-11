@@ -42,7 +42,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocmlir${suffix}";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -53,17 +53,17 @@ stdenv.mkDerivation (finalAttrs: {
 
   src = fetchFromGitHub {
     owner = "ROCm";
-    repo = "rocMLIR";
-    # rocMLIR has no ROCm 10.0 tag (upstream is still on rocm-7.2.x, branch
-    # release/rocm-rel-7.2). ROCm 10.0's AMDMIGraphX (rocm-10.0) pins this exact
-    # rocMLIR commit in its requirements.txt
-    # (ROCm/rocMLIR@2e1e7ab -DBUILD_FAT_LIBROCKCOMPILER=On -DLLVM_INCLUDE_TESTS=Off),
-    # so we track that commit directly rather than a tag. rocMLIR's own project
-    # version at this commit is 2.0.0; `version` above is the ROCm-set version.
+    # NOTE(rocm-10.1): the rocMLIR source MIGraphX uses moved to a new repo in
+    # 10.1. ROCm 10.1's AMDMIGraphX (rocm-10.1) requirements.txt pins
+    # `ROCm/rocmlirTriton@release/rocm-rel-10.1` (-DBUILD_FAT_LIBROCKCOMPILER=On
+    # -DLLVM_INCLUDE_TESTS=Off …), replacing the 10.0 pin ROCm/rocMLIR@2e1e7ab.
+    # Neither repo has a ROCm 10.x tag, so we track the branch head commit
+    # directly, as before. `version` above is the ROCm-set version.
     # NOTE: pinning a bare commit means passthru.updateScript (page = "tags") can no
-    # longer bump this automatically until rocMLIR publishes a rocm-10.x tag.
-    rev = "2e1e7abf4ec789e74e49e42018f852ea66e5ef85";
-    hash = "sha256-ukU6eYAOhIVWhLHYfyW/n1dwz9/Vpc/UKK8uKHpMqz4=";
+    # longer bump this automatically until rocmlirTriton publishes a rocm-10.x tag.
+    repo = "rocmlirTriton";
+    rev = "f347064fea12aa0ab325e1244b65766652a2530c";
+    hash = "sha256-w/eGFiXDfmY9Yog+U037mIG7wEQ9nD/m8z/2sErSuE8=";
   };
 
   nativeBuildInputs = [
@@ -93,9 +93,15 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   cmakeFlags = [
-    (lib.cmakeFeature "LLVM_TARGETS_TO_BUILD" "AMDGPU${
-      lib.optionalString (!buildRockCompiler) ";${llvmNativeTarget}"
-    }")
+    # NOTE(rocm-10.1): the rock-compiler build must build the native (host)
+    # target too, not only AMDGPU. rocmlirTriton's librockcompiler_deps.cmake
+    # bundles the host codegen members (LLVMX86AsmParser/CodeGen/Desc/
+    # Disassembler/Info — Triton does host JIT) into the librockCompiler fat
+    # archive, so with LLVM_TARGETS_TO_BUILD=AMDGPU only, the archive step died
+    # with `No rule to make target '…/LLVMX86AsmParser'`. (The 10.0 rocMLIR
+    # rock compiler didn't pull in host codegen.) Append the native target
+    # unconditionally; the !buildRockCompiler case already did so for the runner.
+    (lib.cmakeFeature "LLVM_TARGETS_TO_BUILD" "AMDGPU;${llvmNativeTarget}")
     (lib.cmakeFeature "LLVM_USE_LINKER" "lld")
     (lib.cmakeFeature "LLVM_ENABLE_ZSTD" "FORCE_ON")
     (lib.cmakeFeature "LLVM_ENABLE_ZLIB" "FORCE_ON")
@@ -112,6 +118,15 @@ stdenv.mkDerivation (finalAttrs: {
   ]
   ++ lib.optionals buildRockCompiler [
     (lib.cmakeBool "LLVM_INCLUDE_TESTS" false)
+    # NOTE(rocm-10.1): rocmlirTriton's mlir/test declares the `check-rocmlir` lit
+    # suite with a DEPENDS on `ci-performance-scripts`, but that target is only
+    # created by mlir/utils/performance, which is gated behind
+    # MLIR_ENABLE_ROCM_RUNNER (= !buildRockCompiler, i.e. OFF here). With MLIR
+    # tests left ON (their CACHE default), CMake's Generate step then failed with
+    # 107× `The dependency target "ci-performance-scripts" … does not exist`. The
+    # rock-compiler build only needs librockCompiler, never the lit suite, so turn
+    # MLIR tests off (LLVM_INCLUDE_TESTS above governs a different variable).
+    (lib.cmakeBool "MLIR_INCLUDE_TESTS" false)
   ]
   ++ lib.optionals (!buildRockCompiler) [
     (lib.cmakeFeature "ROCM_TEST_CHIPSET" "gfx900")
@@ -119,14 +134,29 @@ stdenv.mkDerivation (finalAttrs: {
 
   postPatch = ''
     patchShebangs mlir
-    patchShebangs external/llvm-project/mlir/lib/Dialect/GPU/AmdDeviceLibsIncGen.py
+    # NOTE(rocm-10.1): the rocmlirTriton source reorganised external/llvm-project;
+    # the old single-file target (mlir/lib/Dialect/GPU/AmdDeviceLibsIncGen.py) no
+    # longer exists, so patch the whole external mlir subtree's scripts instead.
+    patchShebangs external/llvm-project/mlir
 
-    # Fixes mlir/lib/Analysis/BufferDependencyAnalysis.cpp:41:19: error: redefinition of 'read'
-    substituteInPlace mlir/lib/Analysis/BufferDependencyAnalysis.cpp \
-      --replace-fail "enum EffectType { read, write, unknown };" "enum class EffectType { read, write, unknown };"
+    # NOTE(rocm-10.1): dropped the mlir/lib/Analysis/BufferDependencyAnalysis.cpp
+    # `enum EffectType { read, … }` -> `enum class` fix — rocmlirTriton no longer
+    # ships mlir/lib/Analysis at all (the redefinition-of-'read' it worked around
+    # is gone), so the substituteInPlace --replace-fail aborted the build.
 
     substituteInPlace mlir/utils/performance/common/CMakeLists.txt \
       --replace-fail " PATHS /opt/rocm" ""
+  '';
+
+  # NOTE(rocm-10.1): the rocmlirTriton source bundles Triton, whose
+  # external/triton/python/build_helpers.py symlinks the pinned in-tree LLVM into
+  # $TRITON_CACHE_PATH (= $HOME/.triton) at configure time. The sandbox HOME is the
+  # read-only /homeless-shelter, so configure died with
+  # `PermissionError: [Errno 13] Permission denied: '/homeless-shelter'`. Give the
+  # build a writable HOME (and point TRITON_CACHE_PATH at it explicitly).
+  preConfigure = ''
+    export HOME="$(mktemp -d)"
+    export TRITON_CACHE_PATH="$HOME/.triton"
   '';
 
   dontBuild = true;
