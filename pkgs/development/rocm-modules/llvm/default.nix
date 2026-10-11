@@ -1,8 +1,10 @@
 {
   lib,
   stdenv,
-  # LLVM version closest to ROCm fork to override
-  llvmPackages_23,
+  # LLVM version closest to ROCm fork to override.
+  # ROCm therock-10.1's llvm-project is LLVM 24; nixpkgs has no released
+  # llvmPackages_24, so we use the 24.0.0-git snapshot (llvmPackages_git).
+  llvmPackages_git,
   overrideCC,
   lndir,
   rocm-device-libs,
@@ -16,14 +18,13 @@
   libffi,
   libxml2,
   removeReferencesTo,
-  fetchpatch,
   # Build compilers and stdenv suitable for profiling
   # leaving compressed line tables (-g1 -gz) unstripped
   # TODO: Should also apply to downstream packages which use rocmClangStdenv?
   profilableStdenv ? false,
   # FIXME: proper two-stage bootstrap & PGO/BOLT/LTO
   # LTO currently disabled due to bitcode mismatch between the nixpkgs
-  # llvmPackages_23 and ROCm LLVM (23.0.0git). Uses new bitcode attr
+  # llvmPackages_git and ROCm LLVM (24.0.0git). Uses new bitcode attr
   # 105 nocreateundeforpoison fails to link hipify.
   # Whether to use LTO when building the ROCm toolchain
   # Slows down this toolchain's build, for typical ROCm usecase
@@ -36,18 +37,42 @@
 }:
 
 let
-  version = "10.0.0";
+  version = "10.1.0";
   # ROCm/TheRock two-component tag (therock-<major>.<minor>) for all monorepo/llvm sources
   srcTag = "therock-${lib.versions.majorMinor version}";
   # major version of this should be the clang version ROCm forked from
-  rocmLlvmVersion = "23.0.0-rocm";
+  rocmLlvmVersion = "24.0.0-rocm";
   # llvmPackages_base version should match rocmLlvmVersion
   # so libllvm's bitcode is compatible with the built toolchain
-  llvmPackages_base = llvmPackages_23;
-  llvmPackagesNoBintools = llvmPackages_base.override {
-    bootBintools = null;
-    bootBintoolsNoLibc = null;
+  # NOTE(rocm-10.1): llvmPackages_git is the 24.0.0-git snapshot (no released
+  # llvmPackages_24 exists). Its check-all runs the PowerPC gold-plugin test
+  # tools/gold/PowerPC/mtriple.ll, which needs host binutils with elf32ppc
+  # emulation; stock nixpkgs x86_64 binutils is single-target, so that one test
+  # fails (`unrecognised emulation mode: elf32ppc`). It is irrelevant to this
+  # bootstrap scaffolding (used only to compile ROCm's own LLVM), so drop it —
+  # mirrors the existing isAarch32 gold-test removals in common/llvm. Applied via
+  # overrideScope so every base derivation on the ROCm build path (libllvm, and
+  # lld/bintools which link against it) uses the fixed libllvm rather than the
+  # check-failing one.
+  skipPpcGoldTest = _final: prev: {
+    libllvm = prev.libllvm.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+        rm -f test/tools/gold/PowerPC/mtriple.ll
+      '';
+    });
   };
+  # Unfiltered base: keeps `.override` for llvmPackagesRocm (which rebuilds libllvm
+  # from ROCm's own therock source, so never hits the base's check-failing libllvm).
+  llvmPackages_base = llvmPackages_git;
+  # Filtered variant for the bootstrap bintools below (its lld links against the
+  # base libllvm, so it must be the fixed one or the check-failing drv is pulled in).
+  llvmPackages_baseFiltered = llvmPackages_git.overrideScope skipPpcGoldTest;
+  llvmPackagesNoBintools =
+    (llvmPackages_git.override {
+      bootBintools = null;
+      bootBintoolsNoLibc = null;
+    }).overrideScope
+      skipPpcGoldTest;
 
   stdenvToBuildRocmLlvm =
     if withLibcxx then
@@ -56,7 +81,7 @@ let
       # oddly fuse-ld=lld fails without this override
       overrideCC llvmPackagesNoBintools.stdenv (
         llvmPackagesNoBintools.libstdcxxClang.override {
-          inherit (llvmPackages_base) bintools;
+          inherit (llvmPackages_baseFiltered) bintools;
         }
       );
 
@@ -120,16 +145,18 @@ let
     owner = "ROCm";
     repo = "llvm-project";
     tag = srcTag;
-    hash = "sha256-s2nBt1Hhc03vtosrUaTr+OBCTWsCfZk5GDmziYlCE54=";
+    hash = "sha256-WkgJF0D4XsrWKbJO+vKow9CrNIKL/PqOXRwrB3ECsQE=";
   };
   llvmMajorVersion = lib.versions.major rocmLlvmVersion;
   # An llvmPackages (pkgs/development/compilers/llvm/) built from ROCm LLVM's source tree
   llvmPackagesRocm = llvmPackages_base.override (_old: {
     stdenv = stdenvToBuildRocmLlvm;
 
-    # not setting gitRelease = because that causes patch selection logic to use git patches
-    # ROCm LLVM is closer to 20 official
-    # gitRelease = {}; officialRelease = null;
+    # The base is now llvmPackages_git (a gitRelease). Null it out and set an empty
+    # officialRelease instead: ROCm LLVM tracks official releases closely, so we want
+    # the official (not git) patch-selection path, and common/default.nix asserts
+    # exactly one of gitRelease/officialRelease is set. We override src/version below.
+    gitRelease = null;
     officialRelease = { }; # Set but empty because we're overriding everything from it.
     # this version determines which patches are applied
     version = rocmLlvmVersion;
@@ -214,8 +241,20 @@ let
 
         # Clang config file: redirect resource dir to the sysroot (where compiler-rt
         # lives) and set GCC install prefix for header/library search
+        #
+        # NOTE(rocm-10.1): LLVM 24's clang-linker-wrapper links libzstd when it
+        # combines offloaded device images with compression (clang defaults
+        # --offload-compress on, which rocBLAS/CK/etc. also request via
+        # BUILD_OFFLOAD_COMPRESS). Under the LLVM-23 base the wrapper did not, so
+        # nothing provided -lzstd and the sandboxed link (e.g. rocm-cmake's
+        # `rocm_check_target_ids` HIP probe, `clang++ -xhip --offload-arch=… --hip-link`)
+        # failed with "clang-linker-wrapper: error: unable to find library -lzstd",
+        # breaking the whole library fleet (rocblas → hipblas → …). Put zstd's lib dir
+        # on the toolchain's default link path so every rocmClangStdenv consumer finds
+        # it, matching the zstd the toolchain's own LLVM was linked against.
         cat > $out/bin/${stdenv.hostPlatform.config}.cfg <<CFG
         -resource-dir=$out/lib/clang/${llvmMajorVersion}
+        -L${zstd.out}/lib
         ${lib.optionalString (!withLibcxx) "--gcc-toolchain=${gcc-prefix}"}
         CFG
 
@@ -297,11 +336,12 @@ overrideLlvmPackagesRocm (s: {
   libllvm = (s.prev.libllvm.override { }).overrideAttrs (old: {
     patches = [
       # NOTE(rocm-10): dropped 3 select-ptr-combine backports (llvm ac27b24 / d3c3c6b /
-      # 0e1cb2d) — already upstream in LLVM 23, they no longer apply and are unneeded.
-      # NOTE(rocm-10): dropped the arm64e_x1 patch group that upstream (nixpkgs#564039)
-      # adds to the base llvm/compiler-rt (wasm32-muslwali / stringswitch / aarch64-lfi) —
-      # it bridges base LLVM 22.0->22.1.8 and is annotated "Can be removed when upgrading
-      # to rocm 10"; this ROCm LLVM is 23-based, so the lfi hunks apply reversed.
+      # 0e1cb2d) — already upstream in LLVM 23+, they no longer apply and are unneeded.
+      # NOTE(rocm-10.1): this ROCm LLVM is now 24-based (therock-10.1, built on the
+      # nixpkgs llvmPackages_git 24.0.0-git snapshot). `++ old.patches` below inherits
+      # llvmPackages_git's libllvm patch set rather than llvmPackages_23's; the
+      # arm64e_x1 bridge group (nixpkgs#564039, "can be removed when upgrading to rocm
+      # 10") is already gone from the 24 base, so nothing to drop there anymore.
     ]
     ++ old.patches
     ++ [
@@ -369,42 +409,46 @@ overrideLlvmPackagesRocm (s: {
         };
         # NOTE(rocm-10): dropped clang-scan-build-py-configurable.patch (llvm PR
         # #172727) — the scan-build-py install option is upstream in LLVM 23.
+        # NOTE(rocm-10.1): rebased the GZGavinZhao GetBundleIDsInFile patch as a
+        # local diff (clang-add-getbundleidsinfile.diff). The rocm-comgr ISA-compat
+        # patch (GZGavinZhao 2c1e44fc) calls the 3-arg set-returning
+        # OffloadBundler::GetBundleIDsInFile; therock-10.1 provides only the 2-arg
+        # print-only ListBundleIDsInFile, so comgr still needs this public wrapper.
+        # LLVM 24 rewrote ListBundleIDsInFile (multi-bundle/compressed loop) and
+        # dropped the <vector> include the upstream fetchpatch anchored hunk #1 on,
+        # so that fetchpatch no longer applied. The functionality is intact —
+        # therock-10.1 keeps FileHandler::getBundleIDs(MemoryBuffer&,
+        # std::set<StringRef>&) — so the rebase just re-anchors the three additive
+        # hunks and uses 24's raw_ostream* decompress() form (which is why the
+        # separate decompress postPatch below is no longer needed).
+        # NOTE(rocm-10.1): dropped clang-log-jobs.diff. It inserted per-job
+        # "Job completed" logging into Compilation::ExecuteJobs to keep terminal
+        # output flowing during long multi-arch offload compiles. LLVM 24 rewrote
+        # ExecuteJobs around native parallel offload job groups
+        # (tryExecuteParallelOffloadJobGroup, indexed `for (size_t I …)` over
+        # getJobs()), so the old range-for loop body the patch targeted no longer
+        # exists (2/3 hunks fail). The patch is cosmetic (CI-progress only) and the
+        # new parallel-offload execution partly supersedes it, so drop rather than
+        # speculatively rebase into the restructured loop.
         patches = old.patches ++ [
           # Never add FHS include paths
           ./clang-bodge-ignore-systemwide-incls.diff
-          # Prevents builds timing out if a single compiler invocation is very slow but
-          # per-arch jobs are completing by ensuring there's terminal output
-          ./clang-log-jobs.diff
           ./opt-offload-compress-on-by-default.patch
           ./perf-shorten-gcclib-include-paths.patch
-          (fetchpatch {
-            # [ClangOffloadBundler]: Add GetBundleIDsInFile to OffloadBundler
-            hash = "sha256-OsarDZXuJ5vAXTP4i0NBUeK/r6tQPumaqmMWkf29UtM=";
-            url = "https://github.com/GZGavinZhao/rocm-llvm-project/commit/c7de294b0d1d25f277f9d1cbb2c9e09c7600e210.patch";
-            relative = "clang";
-          })
+          # Adds the 3-arg set-returning OffloadBundler::GetBundleIDsInFile that the
+          # rocm-comgr ISA-compat patch depends on (see NOTE above).
+          ./clang-add-getbundleidsinfile.diff
         ];
-        # NOTE(rocm-10): LLVM 23 changed CompressedOffloadBundle::decompress to
-        # take a raw_ostream* (verbose stream) instead of a bool; fix the call
-        # added by the GetBundleIDsInFile patch above to match.
-        postPatch = (old.postPatch or "") + ''
-          substituteInPlace lib/Driver/OffloadBundler.cpp \
-            --replace-fail \
-              'CompressedOffloadBundle::decompress(**CodeOrErr, BundlerConfig.Verbose);' \
-              'CompressedOffloadBundle::decompress(**CodeOrErr, BundlerConfig.Verbose ? &llvm::errs() : nullptr);'
-        '';
-        # ROCm 7.2 commits 4dda51261a6 "Replace hostexec with upstream rpc"
-        # and 2ca1509d6d2 "Put the RTL, Back!", added CGEmitEmissaryExec.cpp which
-        # includes ../../openmp/device/include/EmissaryIds.h, breaking
-        # standalone clang builds. The upstream PR llvm/llvm-project#175265
-        # ("[OpenMP] support for Emissary APIs") moves EmissaryIds.h into
-        # clang/lib/Headers/ so this should not be needed once that lands
-        # and ROCm rebases onto it.
-        postUnpack = ''
-          ${old.postUnpack or ""}
-          mkdir -p "''${sourceRoot}/openmp/device/include"
-          ln -s "${llvmSrc}/openmp/device/include/EmissaryIds.h" "''${sourceRoot}/openmp/device/include/"
-        '';
+        # NOTE(rocm-10.1): dropped the CompressedOffloadBundle::decompress postPatch.
+        # It only fixed the call site added by the now-removed GetBundleIDsInFile
+        # patch; therock-10.1's own call sites already pass the raw_ostream* form
+        # (`decompress(**CodeOrErr, Verbose ? &llvm::errs() : nullptr)`), so the old
+        # `--replace-fail` on the bool form would hard-fail the build.
+        # NOTE(rocm-10.1): dropped the EmissaryIds postUnpack symlink. It worked
+        # around CGEmitEmissaryExec.cpp including ../../openmp/device/include/
+        # EmissaryIds.h, but therock-10.1 removed both that file and the header
+        # (upstream llvm/llvm-project#175265 restructured the Emissary APIs), so the
+        # standalone-clang-build breakage it patched no longer exists.
         hardeningDisable = [ "all" ];
         nativeBuildInputs = old.nativeBuildInputs ++ [
           removeReferencesTo
