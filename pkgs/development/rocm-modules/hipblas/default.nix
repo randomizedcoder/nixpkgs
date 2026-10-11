@@ -25,7 +25,7 @@
 # Can also use cuBLAS
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipblas";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -48,7 +48,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/hipblas"
       "shared"
     ];
-    hash = "sha256-/Pr+tj0uZaELnett+sRodpZdaKWE3uX96CKIOPvs5xI=";
+    hash = "sha256-VUM+5qu8VK6fUbKPCVMm0PtmuZhJZYfEI6aKJEV9Vwg=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hipblas";
 

@@ -19,7 +19,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocwmma";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -42,7 +42,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocwmma"
       "shared"
     ];
-    hash = "sha256-vN0s7lDUK9lEi3jClGZzouWi9Vej0v/gsTe707m+oE0=";
+    hash = "sha256-RvhZH4VVJLpj9ThF3MuvUPsAC7Y4BBTdIAReq7NyX3A=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocwmma";
 

@@ -8,7 +8,7 @@
 }:
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipblas-common";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -18,7 +18,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/hipblas-common"
       "shared"
     ];
-    hash = "sha256-XqTpDOCxCrxwUifreTSHDhVgne2CFahMi44VQMPNnjA=";
+    hash = "sha256-2sUJqcy/LSfKOvY1IBzlxmbKZImMxf6YGA+qQml8DLc=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hipblas-common";
 

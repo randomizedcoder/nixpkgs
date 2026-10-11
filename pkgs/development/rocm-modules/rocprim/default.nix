@@ -15,7 +15,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocprim";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -35,7 +35,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocprim"
       "shared"
     ];
-    hash = "sha256-/gJGCykUvowsXGmwUCljzvLDaaLMczsLCKxQIIjNzKI=";
+    hash = "sha256-ObSLanTmi2Utv7kWM7hjnVzmNU2e4P23SB3+7Z3qO0o=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocprim";
 

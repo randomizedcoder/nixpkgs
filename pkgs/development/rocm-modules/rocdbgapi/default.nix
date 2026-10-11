@@ -47,7 +47,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocdbgapi";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -67,7 +67,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocdbgapi"
       "shared"
     ];
-    hash = "sha256-DUGIhEmGzYt5Rx324z8jkVXZ3LsyLCWek7Z0KVxCNTM=";
+    hash = "sha256-vadmzQL3Sqtbtf7vMKCN6jabBuxnugPHDJd2yDhVDTM=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocdbgapi";
 

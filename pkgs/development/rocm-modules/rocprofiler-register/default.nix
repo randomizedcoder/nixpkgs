@@ -17,7 +17,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocprofiler-register";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -27,7 +27,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocprofiler-register"
       "shared"
     ];
-    hash = "sha256-DmWJSQYopfkgVHFopPRthyCue87CFtPEJeClckK+GoU=";
+    hash = "sha256-/y+ZerbaSKyHfEttomNtmF5zccnpqsQFNw/5gjGBuyA=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocprofiler-register";
 

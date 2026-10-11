@@ -14,7 +14,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "hiprand";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -31,7 +31,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/hiprand"
       "shared"
     ];
-    hash = "sha256-Cl2UP6n3Rd1gJmRbTvJjU+NjkF1dS3zzikoAIgmXw5U=";
+    hash = "sha256-ocVmceoelvCbg95F+z02wbSi+M/Wm4nFolrlpqKIhlk=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hiprand";
 

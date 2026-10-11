@@ -21,7 +21,7 @@
 # Can also use cuFFT
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipfft";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -45,7 +45,7 @@ stdenv.mkDerivation (finalAttrs: {
       "shared"
     ];
     fetchSubmodules = true;
-    hash = "sha256-Tm7TFVXAdhgA4n2xZYB48R2RtqVAk+ti4PXNt4YF7aU=";
+    hash = "sha256-QTcdNpA/xEH99DZ6rlhMGWUVpc0aitve4lKlhNiF0OM=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hipfft";
 

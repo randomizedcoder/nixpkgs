@@ -19,7 +19,7 @@
 stdenv.mkDerivation (finalAttrs: {
   pname = "rpp-${if useCPU then "cpu" else "hip"}";
 
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -30,7 +30,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rpp"
       "shared"
     ];
-    hash = "sha256-IMZs/Llv2WBTP4CbWMhJTgTdTAG8orzjg5TjRDJNh4s=";
+    hash = "sha256-ZD3gzZhb1n5hSJ6nnYVksuoYEEy+wzaLbh02tMdv8dQ=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rpp";
 

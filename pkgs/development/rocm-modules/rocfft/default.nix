@@ -20,7 +20,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocfft${clr.gpuArchSuffix}";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -30,7 +30,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocfft"
       "shared"
     ];
-    hash = "sha256-k3sD3a9zO6FDKbSY953wDvRI2925n0+fTWJqCPd5zSI=";
+    hash = "sha256-N7bqrYrrYg9p6YnG7UcvOL7qYDPD/XwKUj7Jco57/oY=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocfft";
 

@@ -7,7 +7,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "hip-common";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -17,7 +17,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/hip"
       "shared"
     ];
-    hash = "sha256-v30H6y9zgB5B2AzlxJsKu0mbJMxpi3q45bc3+pbbB8M=";
+    hash = "sha256-MP92iAemtjBLt9hy4JJpud+UfT2xolfm7mtLknrU5EE=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hip";
 

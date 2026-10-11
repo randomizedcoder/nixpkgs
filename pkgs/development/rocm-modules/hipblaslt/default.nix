@@ -74,13 +74,13 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipblaslt${clr.gpuArchSuffix}";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-libraries";
     tag = "therock-${lib.versions.majorMinor finalAttrs.version}";
-    hash = "sha256-EWigr1BkmTgwAm7u9kG1iBkhedhupp3IU3LA3UGnHmM=";
+    hash = "sha256-FOwC+eG8dYgiktogDrUZhtKbKl9iNFvnGXSt0Uj02lQ=";
     sparseCheckout = [
       "projects/hipblaslt"
       "shared"

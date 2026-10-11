@@ -12,7 +12,7 @@
 }:
 
 stdenv.mkDerivation (finalAttrs: {
-  version = "10.0.0";
+  version = "10.1.0";
   pname = "rocminfo";
 
   src = fetchFromGitHub {
@@ -23,7 +23,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocminfo"
       "shared"
     ];
-    hash = "sha256-GC2KKk8WBwAetGyxoy16bQXi2o+NeETyH7rK+RleNGg=";
+    hash = "sha256-oK9fUtHb2qvFTpQ/9KE6LfiopDUvoreApZtsDb9aGvA=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocminfo";
 

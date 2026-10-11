@@ -11,7 +11,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocm-smi";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -21,7 +21,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocm-smi-lib"
       "shared"
     ];
-    hash = "sha256-pFVTw49W2P0dp5hcX2CTXOPFotNhX6o9jZ0XJpY9ZcM=";
+    hash = "sha256-t5yMLdDaylgdhreVzWBmhY5rFvNSGRs3v2bZcRQyqI0=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocm-smi-lib";
 

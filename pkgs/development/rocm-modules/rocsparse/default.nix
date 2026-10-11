@@ -20,7 +20,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocsparse${clr.gpuArchSuffix}";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -40,7 +40,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocsparse"
       "shared"
     ];
-    hash = "sha256-EJMDypjRu/+v5aj21TAKWpCUsdL80mnEYHCZCf7LpVw=";
+    hash = "sha256-CdUH85q4ZwZh+1OwzOMvLhE0LSwkAl4RzBSjhY1xuGo=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocsparse";
 

@@ -15,7 +15,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocthrust";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -35,7 +35,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocthrust"
       "shared"
     ];
-    hash = "sha256-C2jS7pCwjhmArhNgY6unYcdZ5OA04nzRjt1f93DAbp8=";
+    hash = "sha256-VYIOMrJj+6fxuV3SkntYnPnCsyqAvLERlxrQQ5qzYJA=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocthrust";
 

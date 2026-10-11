@@ -18,7 +18,7 @@
 
 buildPythonPackage (finalAttrs: {
   pname = "tensile";
-  version = "10.0.0";
+  version = "10.1.0";
   pyproject = true;
 
   src = fetchFromGitHub {
@@ -29,7 +29,7 @@ buildPythonPackage (finalAttrs: {
       "shared/tensile"
       "shared"
     ];
-    hash = "sha256-NFeXnmCOpBlbWivmc1Q0/nU8VDqO1y82jMHYWBkKckc=";
+    hash = "sha256-OJPndaRrXoWsqrEFYRRhU8qnivb1zLigFQ2McWqMMDk=";
   };
   sourceRoot = "${finalAttrs.src.name}/shared/tensile";
 

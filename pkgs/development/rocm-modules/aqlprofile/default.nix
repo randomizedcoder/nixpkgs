@@ -9,7 +9,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "aqlprofile";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -19,7 +19,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/aqlprofile"
       "shared"
     ];
-    hash = "sha256-zSEuoab8CAzRe5BW4kE6Fgn+TgfSpSBtGjcDCI6w5fY=";
+    hash = "sha256-7yeEJoyShSCwy1MTCeArYBabh5qTVm5uZL8N74rvxPA=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/aqlprofile";
 

@@ -19,7 +19,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "roctracer";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -39,7 +39,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/roctracer"
       "shared"
     ];
-    hash = "sha256-+2PWQW3EKy2jgjD00ha1nxmvoy0DnOL3ykx33JOYg8E=";
+    hash = "sha256-1pXWl8yUlfw5C3PFhrLxXPwHxscu1+AHx+lEqhl59vk=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/roctracer";
 

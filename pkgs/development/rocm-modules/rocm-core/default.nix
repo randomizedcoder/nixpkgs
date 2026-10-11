@@ -17,7 +17,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocm-core";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -27,7 +27,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocm-core"
       "shared"
     ];
-    hash = "sha256-7rPhCKGi5vcx3LsqnffCZK6n1lL5hjzMreot2gk/v+c=";
+    hash = "sha256-3bEmFF4jivCslDINOTA5nIu1/nreGWZuIMYMxaUgd18=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocm-core";
 

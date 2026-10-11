@@ -22,7 +22,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocalution";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -46,7 +46,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocalution"
       "shared"
     ];
-    hash = "sha256-fIntHp+NCC7v1tOnRq8W3tOSuSpdreC7CpUhkhui8xs=";
+    hash = "sha256-peElY9WF9GbITUkeUwW0Ys8UYrUeXQ3Go7uWYGvMZBY=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocalution";
 

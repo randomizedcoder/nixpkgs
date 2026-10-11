@@ -15,7 +15,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocrand${clr.gpuArchSuffix}";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -35,7 +35,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocrand"
       "shared"
     ];
-    hash = "sha256-cx3QEJQ1ebWvzRPcsK8fk9Nc37frtD9GS+ndOqVnts4=";
+    hash = "sha256-vBNKXBOfBi+f9VaxZWaka/phgidi/lGOow+aSjBpy+4=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocrand";
 

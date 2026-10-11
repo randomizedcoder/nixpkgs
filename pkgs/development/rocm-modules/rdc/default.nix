@@ -49,7 +49,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rdc";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -69,7 +69,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rdc"
       "shared"
     ];
-    hash = "sha256-k6frKHntRIBitM9KK5SJjk0k/+FSHH/846d615w9LB4=";
+    hash = "sha256-tcov375DXHX1L/HhACevulzBOhq7Gp08j8SDEuVgPYU=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rdc";
 

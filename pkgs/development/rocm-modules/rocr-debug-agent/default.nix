@@ -12,7 +12,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocr-debug-agent";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -23,7 +23,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocr-debug-agent"
       "shared"
     ];
-    hash = "sha256-XJ9NGk7Xb5syTrQ3NtUWdjQpMbJXGlcGOGDvYlGLIvA=";
+    hash = "sha256-WpBG1ogF161EM3tgXnVGstyDBdCmTXQPUPnkZF1eF3A=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocr-debug-agent";
 

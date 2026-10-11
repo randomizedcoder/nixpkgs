@@ -20,7 +20,7 @@
 # This can also use cuSPARSE as a backend instead of rocSPARSE
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipsparse";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -40,7 +40,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/hipsparse"
       "shared"
     ];
-    hash = "sha256-dipHvxi2urrTAAGYI+V8ueLJ81Lsg9Y1iqi8NQ6+6dI=";
+    hash = "sha256-kvDzX1SnvumRgj+Va+zFPbU93dZttIE/ovL4BPG2Xi0=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hipsparse";
 

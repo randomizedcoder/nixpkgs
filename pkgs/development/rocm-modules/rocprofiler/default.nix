@@ -44,7 +44,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocprofiler";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -55,7 +55,7 @@ stdenv.mkDerivation (finalAttrs: {
       "shared"
     ];
     fetchSubmodules = true;
-    hash = "sha256-c2Z5D9cnTEJuJoZvp8z3iMjTVhtXyAAt6lKZfRSX+iA=";
+    hash = "sha256-vKs+2TpbxmHZNmQK0WDRRKohUTpu/Zkc1V1b8V+lExk=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocprofiler";
 

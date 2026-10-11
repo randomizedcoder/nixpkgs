@@ -22,7 +22,7 @@
 # Can also use cuSOLVER
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipsolver";
-  version = "10.0.0";
+  version = "10.1.0";
 
   outputs = [
     "out"
@@ -45,7 +45,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/hipsolver"
       "shared"
     ];
-    hash = "sha256-E9WxBfJ5CUCgDdIF05Uy80HfId+ZJSxG5k51jaWNyEw=";
+    hash = "sha256-Djncqth/JEH1ko0iVvx3WdvK2UeK/Ywuwca9y4q2Xvg=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hipsolver";
 

@@ -18,7 +18,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "rocm-runtime";
-  version = "10.0.0";
+  version = "10.1.0";
 
   src = fetchFromGitHub {
     owner = "ROCm";
@@ -28,7 +28,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/rocr-runtime"
       "shared"
     ];
-    hash = "sha256-KVH8jhtjUIRNCF3gid7ZuW+XmSLRJqZtLMY+hOtXggw=";
+    hash = "sha256-fY6/ofaZe94ZK7An6bSHcLj0T92OCQCflnBk5onVzzo=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/rocr-runtime";
 
