@@ -25,7 +25,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "amdsmi";
-  version = "10.0.0";
+  version = "10.1.0";
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-systems";
@@ -34,7 +34,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/amdsmi"
       "shared"
     ];
-    hash = "sha256-yhgSwRk9vL40bmnAE3im7DOXy6uMA7NTZxPp5fQC7Qo=";
+    hash = "sha256-CmCVPmqgU0HtqIBuJUs+Nr7LRKtngOaNNsWFek9Nino=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/amdsmi";
 
@@ -78,6 +78,16 @@ stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_INSTALL_BINDIR=bin"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
+    # NOTE(rocm-10.1): amdsmi's py-interface/CMakeLists.txt now FATAL_ERRORs at
+    # configure time if it cannot locate a system python3 (it probes
+    # /usr/bin/python3 and /usr/libexec/platform-python, neither of which exists
+    # in the sandbox) unless AMDSMI_SYSTEM_PYTHON_SITELIB is set explicitly. The
+    # actual site-packages install it guards is DESTDIR-gated (nix uses
+    # CMAKE_INSTALL_PREFIX, not DESTDIR) and thus skipped; the module is always
+    # staged under share/amd_smi, which the postInstall symlink below exposes on
+    # sys.path. So this value only satisfies the guard — point it at nix's
+    # sitePackages for correctness.
+    "-DAMDSMI_SYSTEM_PYTHON_SITELIB=${placeholder "out"}/${python.sitePackages}"
   ];
 
   postInstall = ''
