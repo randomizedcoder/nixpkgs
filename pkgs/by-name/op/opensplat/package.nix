@@ -3,6 +3,8 @@
   stdenv,
   cmake,
   ninja,
+  pkg-config,
+  libdrm,
   fetchFromGitHub,
   python3,
   opencv,
@@ -81,6 +83,8 @@ stdenv'.mkDerivation (finalAttrs: {
   ]
   ++ lib.optionals rocmSupport [
     rocmPackages.clr
+    # Torch's ROCm CMake dependencies require pkg-config.
+    pkg-config
   ]
   ++ lib.optionals cudaSupport [
     cudaPackages.cuda_nvcc
@@ -106,8 +110,9 @@ stdenv'.mkDerivation (finalAttrs: {
     rocmPackages.hipblaslt
     rocmPackages.rocblas
     rocmPackages.rocsolver
-    rocmPackages.rocsolver
     rocmPackages.miopen
+    # Torch's ROCm CMake dependencies require libdrm.pc.
+    libdrm
   ]
   ++ lib.optionals cudaSupport [
     cudaPackages.cuda_cudart
