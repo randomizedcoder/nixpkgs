@@ -49,7 +49,7 @@ let
   # flags nixpkgs nlohmann_json 3.12.0 switch(...) default labels. -isystem the
   # nlohmann headers so its header warnings are not treated as MIOpen -Werror errors.
   cFlags = "-Wno-documentation-pedantic -Wno-covered-switch-default --offload-compress -I${hipblas-common}/include -I${hipblas}/include -I${roctracer}/include -isystem ${nlohmann_json}/include -I${sqlite.dev}/include -I${rocrand}/include";
-  version = "10.0.0";
+  version = "10.1.0";
 
   # Targets outside this list will get
   # error: use of undeclared identifier 'CK_BUFFER_RESOURCE_3RD_DWORD'
@@ -135,7 +135,7 @@ stdenv.mkDerivation (finalAttrs: {
       "shared"
     ];
     fetchSubmodules = true;
-    hash = "sha256-8Ksw1v/nkSSS8ecWJ7CaRnK4JX1Kn6+EMg8GrTzSzhA=";
+    hash = "sha256-pIo0QeVJ64Abte5u319kd2O6gjHIOtMkBo3h4thpzDo=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/miopen";
 
@@ -234,6 +234,20 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeBool "MIOPEN_USE_COMPOSABLEKERNEL" withComposableKernel)
     (lib.cmakeBool "MIOPEN_USE_HIPRTC" true)
     (lib.cmakeBool "MIOPEN_USE_COMGR" true)
+    # NOTE(rocm-10.1): disable the new vendored `hipconv` convolution subsystem.
+    # hipconv is a 10.1 addition that serves ONLY cdna3/cdna4/cdna5 (gfx942/gfx950/
+    # future; gfx942 "declares no kernels of its own") — none of the gfx906/gfx908/
+    # gfx1102 arches we care about. Its CMake unconditionally globs and compiles every
+    # arch dir under src/hipconv/src/arch/*, and the cdna4 `direct_wgrad` kernels do not
+    # compile under the LLVM-24 (therock-10.1) toolchain: clang-24 rejects their
+    # `static constexpr` class members and namespace-scope `constexpr` variable
+    # templates (loads_in_flight/item_rounds/loads_per_row/total_rounds/has_drain) as
+    # "reference to __host__ variable in __device__ function" (a stricter constexpr->
+    # device-promotion rule than LLVM-23), cascading into "static assertion expression
+    # is not an integral constant expression". Turning hipconv OFF loses nothing on our
+    # target GPUs; the gfx950 direct-conv fast path can be restored with a source fix
+    # once upstream/clang-24 settle the constexpr-device semantics. See STATUS.md.
+    (lib.cmakeBool "MIOPEN_USE_HIPCONV" false)
     "-DCMAKE_HIP_COMPILER_ROCM_ROOT=${clr}"
     # Manually define CMAKE_INSTALL_<DIR>
     # See: https://github.com/NixOS/nixpkgs/pull/197838
