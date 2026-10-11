@@ -194,6 +194,23 @@ let
         # So, bodge. Otherwise you end up having to build all of ROCm with a low core limit when
         # it's only this package that has trouble.
         preConfigure = old.preConfigure or "" + ''
+          # NOTE(rocm-10.1): drop the cc-wrapper's "-rpath $out/lib" self-reference
+          # from NIX_LDFLAGS for the split "parts" builds. clang-24 forwards
+          # NIX_LDFLAGS to the HIP *device* linker, so every instance's device code
+          # object is stamped with DT_RUNPATH=$out/lib. That RUNPATH gets baked into
+          # the --offload-compress'd .hip_fatbin (a CCOB integrity-checked blob, so it
+          # cannot be scrubbed post-hoc with remove-references-to without corrupting
+          # the device code), and because these .o are copied from the part's store
+          # output into the final CK derivation it becomes a disallowed cross-reference
+          # (disallowedReferences fails). The parts only emit relocatable .o, so the
+          # self-rpath is useless here; removing it leaves nothing to leak while
+          # keeping offload compression. Scrub the plain var and any role-suffixed
+          # copies the bintools wrapper may already hold.
+          for _v in NIX_LDFLAGS ''${!NIX_LDFLAGS_*}; do
+            printf -v "$_v" '%s' "$(sed "s| *-rpath $out/lib||g" <<< "''${!_v-}")"
+            export "$_v"
+          done
+
           MEM_GB_TOTAL=$(awk '/MemTotal/ { printf "%d \n", $2/1024/1024 }' /proc/meminfo)
           MEM_GB_AVAILABLE=$(awk '/MemAvailable/ { printf "%d \n", $2/1024/1024 }' /proc/meminfo)
           APPX_GB=$((MEM_GB_AVAILABLE > MEM_GB_TOTAL ? MEM_GB_TOTAL : MEM_GB_AVAILABLE))
