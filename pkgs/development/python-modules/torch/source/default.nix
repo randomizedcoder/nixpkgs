@@ -55,6 +55,7 @@
   openssl,
   numactl,
   llvmPackages,
+  libdrm,
 
   # dependencies
   filelock,
@@ -399,6 +400,22 @@ buildPythonPackage.override { inherit stdenv; } (finalAttrs: {
       --replace-fail "list(APPEND ATen_HIP_INCLUDE \''${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/composable_kernel/include)" "" \
       --replace-fail "list(APPEND ATen_HIP_INCLUDE \''${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/composable_kernel/library/include)" ""
   ''
+  # With real CK (mfma targets), USE_ROCM_CK_SDPA turns on and torch's CK-Tile
+  # FMHA codegen runs `bash -c "<dir>/add_make_kernel_pt.sh ..."` at configure
+  # time; that .sh has a `#!/bin/bash` shebang which doesn't exist in the Nix
+  # sandbox (bad interpreter). Patch its shebang so the codegen step succeeds.
+  + lib.optionalString rocmSupport ''
+    patchShebangs aten/src/ATen/native/transformers/hip/flash_attn/ck
+
+    # ROCm 10's rocprofiler-sdk ships an OMPT plugin whose one-time init dlopens a
+    # library while libomp holds its (non-recursive) init ticket lock: OpenBLAS's
+    # constructor queries the CPU count -> libomp __kmp_middle_initialize ->
+    # ompt_pre_init -> rocprofiler-sdk -> dlopen -> OpenBLAS ctor -> libomp again,
+    # busy-waiting on the held lock forever, so `import torch` hangs (surfaced as a
+    # pythonImportsCheck hang; also hits runtime, e.g. vllm). Disable the OMPT tool
+    # interface by default (setdefault, so a user wanting rocprofv3 can override).
+    sed -i '/^    if USE_GLOBAL_DEPS:$/i\    os.environ.setdefault("OMP_TOOL", "disabled")' torch/__init__.py
+  ''
   # Remove PyTorch's FindCUDAToolkit.cmake and use CMake's default.
   # NOTE: Parts of pytorch rely on unmaintained FindCUDA.cmake with custom patches to support e.g.
   # newer architectures (sm_90a). We do want to delete vendored patches, but have to keep them
@@ -625,6 +642,13 @@ buildPythonPackage.override { inherit stdenv; } (finalAttrs: {
   ++ lib.optionals rocmSupport [
     rocmtoolkit_joined
     rocmPackages.clr # Added separately so setup hook applies
+    # ROCm 10's rocm-smi exports a rocm_smi-config.cmake that does
+    # pkg_check_modules(_ROCM_SMI_DRM REQUIRED libdrm) (its public headers pull in
+    # libdrm/drm.h via kfd_ioctl.h). rocm-smi propagates libdrm, but torch consumes
+    # it through the rocmtoolkit_joined symlinkJoin, which drops propagatedBuildInputs
+    # -> libdrm.pc is off PKG_CONFIG_PATH and torch's LoadHIP find_package(rocm_smi)
+    # fails at configure. Add libdrm directly so the pkg-config hook finds libdrm.pc.
+    libdrm
   ];
 
   dependencies = [
