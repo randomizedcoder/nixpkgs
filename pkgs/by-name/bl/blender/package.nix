@@ -165,8 +165,15 @@ stdenv'.mkDerivation (finalAttrs: {
                 '${lib.getLib brotli}/lib/libbrotlidec.dylib'
   '')
   + (lib.optionalString rocmSupport ''
-    substituteInPlace extern/hipew/src/hipew.c --replace-fail '"/opt/rocm/hip/lib/libamdhip64.so.${lib.versions.major rocmPackages.clr.version}"' '"${rocmPackages.clr}/lib/libamdhip64.so"'
-    substituteInPlace extern/hipew/src/hipew.c --replace-fail '"opt/rocm/hip/bin"' '"${rocmPackages.clr}/bin"'
+    # hipew.c dlopens HIP by trying a list of candidate sonames; rewrite the
+    # bare "libamdhip64.so" one to clr's absolute store path. (The old line
+    # keyed "/opt/rocm/hip/lib/libamdhip64.so.N" off clr.version's major,
+    # which broke at ROCm 10: the HIP soname major stayed 7 — hip's VERSION
+    # reads 7.15.0 — while clr.version became 10.x, so ".so.10" matched
+    # nothing in the file.)
+    substituteInPlace extern/hipew/src/hipew.c \
+      --replace-fail '"libamdhip64.so"' '"${rocmPackages.clr}/lib/libamdhip64.so"' \
+      --replace-fail '"opt/rocm/hip/bin"' '"${rocmPackages.clr}/bin"'
   '')
   + (lib.optionalString oneapiSupport ''
     substituteInPlace intern/cycles/kernel/device/oneapi/CMakeLists.txt \
