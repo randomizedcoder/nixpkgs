@@ -74,9 +74,8 @@ stdenv.mkDerivation (finalAttrs: {
   sourceRoot = "${finalAttrs.src.name}/projects/rdc";
 
   patches = [
-    # https://github.com/ROCm/rocm-systems/pull/2423
-    ./fix-cmake-cxxflags.patch
     # https://github.com/ROCm/rocm-systems/pull/2424
+    # (PR 2423, CMAKE_CXX_FLAGS after project(), is merged in therock-10.1)
     ./fix-libcap-pkgconfig.patch
   ];
 
