@@ -58,7 +58,7 @@ stdenv.mkDerivation (
     ];
 
     setupHook = writeText "setupHook.sh" ''
-      export ROCM_VERSION="${finalAttrs.version}"
+      export ROCM_VERSION="${rocmVersion}"
       export ROCM_LIBPATCH_VERSION="${finalAttrs.env.ROCM_LIBPATCH_VERSION}"
       export ROCM_BUILD_ID="${finalAttrs.env.ROCM_BUILD_ID}"
     '';
