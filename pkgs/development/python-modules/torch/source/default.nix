@@ -400,16 +400,6 @@ buildPythonPackage.override { inherit stdenv; } (finalAttrs: {
       --replace-fail "list(APPEND ATen_HIP_INCLUDE \''${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/composable_kernel/include)" "" \
       --replace-fail "list(APPEND ATen_HIP_INCLUDE \''${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/composable_kernel/library/include)" ""
   ''
-  + lib.optionalString rocmSupport ''
-    # ROCm 10's rocprofiler-sdk ships an OMPT plugin whose one-time init dlopens a
-    # library while libomp holds its (non-recursive) init ticket lock: OpenBLAS's
-    # constructor queries the CPU count -> libomp __kmp_middle_initialize ->
-    # ompt_pre_init -> rocprofiler-sdk -> dlopen -> OpenBLAS ctor -> libomp again,
-    # busy-waiting on the held lock forever, so `import torch` hangs (surfaced as a
-    # pythonImportsCheck hang; also hits runtime, e.g. vllm). Disable the OMPT tool
-    # interface by default (setdefault, so a user wanting rocprofv3 can override).
-    sed -i '/^    if USE_GLOBAL_DEPS:$/i\    os.environ.setdefault("OMP_TOOL", "disabled")' torch/__init__.py
-  ''
   # Remove PyTorch's FindCUDAToolkit.cmake and use CMake's default.
   # NOTE: Parts of pytorch rely on unmaintained FindCUDA.cmake with custom patches to support e.g.
   # newer architectures (sm_90a). We do want to delete vendored patches, but have to keep them
@@ -588,7 +578,10 @@ buildPythonPackage.override { inherit stdenv; } (finalAttrs: {
     ]
   )
   ++ lib.optionals isCudaJetson [ cudaPackages.autoAddCudaCompatRunpath ]
-  ++ lib.optionals rocmSupport [ rocmtoolkit_joined ];
+  ++ lib.optionals rocmSupport [
+    rocmtoolkit_joined
+    libdrm
+  ];
 
   buildInputs = [
     blas
@@ -670,7 +663,12 @@ buildPythonPackage.override { inherit stdenv; } (finalAttrs: {
   ];
 
   propagatedCxxBuildInputs =
-    [ ] ++ lib.optionals MPISupport [ mpi ] ++ lib.optionals rocmSupport [ rocmtoolkit_joined ];
+    [ ]
+    ++ lib.optionals MPISupport [ mpi ]
+    ++ lib.optionals rocmSupport [
+      rocmtoolkit_joined
+      libdrm
+    ];
 
   # Tests take a long time and may be flaky, so just sanity-check imports
   doCheck = false;
