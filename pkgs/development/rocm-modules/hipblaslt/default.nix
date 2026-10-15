@@ -97,10 +97,7 @@ stdenv.mkDerivation (finalAttrs: {
   env.TENSILE_GEN_ASSEMBLY_TOOLCHAIN = lib.getExe' clr "amdclang++";
   env.LD_PRELOAD = "${jemalloc}/lib/libjemalloc.so";
   env.MALLOC_CONF = "background_thread:true,metadata_thp:auto,dirty_decay_ms:10000,muzzy_decay_ms:10000";
-  # tensilelite has a helper-kernel .hsaco cache (HelperKernelCache) that defaults to $HOME/.tensile/helper_cache. $HOME is /homeless-shelter
-  # (unwritable) in the Nix sandbox, so the code-object compile phase crashes with
-  # PermissionError on mkdir. Cross-invocation caching is useless under Nix anyway
-  # (each build compiles every kernel once), so disable it via the upstream switch.
+  # The helper-kernel cache defaults to an unwritable home directory in the sandbox.
   env.TENSILE_DISABLE_HELPER_CACHE = "1";
   requiredSystemFeatures = [ "big-parallel" ];
 
@@ -124,6 +121,7 @@ stdenv.mkDerivation (finalAttrs: {
     # parallel-jobs for these invocations
     # https://github.com/ROCm/rocm-libraries/issues/1242
     ./parallel-buildSourceCodeObjectFile.diff
+    ./tensile-memory.patch
     # Support loading zstd compressed .dat files, required to keep output under
     # hydra size limit
     ./messagepack-compression-support.patch
@@ -133,14 +131,6 @@ stdenv.mkDerivation (finalAttrs: {
     find . -name '*.yaml.zst' -path '*/Tensile/Logic/*' -exec zstd -d --rm {} \;
   '';
 
-  # Belt-and-suspenders for the $HOME=/homeless-shelter problem above: point $HOME
-  # at a writable dir so any *other* tensilelite step that writes under $HOME during
-  # the (~7h) code-object compile phase doesn't fail after the fact. Cheap insurance
-  # given how long a full-matrix rebuild takes to reach that phase.
-  preBuild = ''
-    export HOME=$TMPDIR
-  '';
-
   postPatch = ''
     # The shared dep `origami` (pulled via add_subdirectory) requires Git only to
     # guard a FetchContent fallback that downloads rocm-cmake, which we never hit
@@ -148,15 +138,7 @@ stdenv.mkDerivation (finalAttrs: {
     substituteInPlace ../../shared/origami/cmake/dependencies.cmake \
       --replace-fail "find_package(Git REQUIRED)" ""
 
-    # The new shared dep `stinkytofu` unconditionally `include(ClangTidy)` +
-    # `add_clang_tidy_custom_target()` from the monorepo's top-level cmake/modules
-    # (not in our sparse checkout of projects/hipblaslt+shared). It's a dev-lint
-    # target only (ENABLE_CLANG_TIDY defaults OFF), so drop both calls. (The
-    # sibling default_amdclang.cmake includes are guarded to standalone builds,
-    # which we are not, so they never fire here.)
-    substituteInPlace ../../shared/stinkytofu/CMakeLists.txt \
-      --replace-fail 'include(ClangTidy)' "" \
-      --replace-fail 'add_clang_tidy_custom_target()' ""
+
 
     # messagepack-compression-support.patch calls ZSTD_* in MessagePack.cpp
     # (compiled into the tensilelite-host static lib). The amdclang toolchain
