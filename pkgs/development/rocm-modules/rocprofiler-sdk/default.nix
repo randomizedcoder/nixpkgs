@@ -111,6 +111,7 @@ stdenv.mkDerivation (finalAttrs: {
     # "[rocprofiler-sdk] Migrate from glog to Abseil Logging (#4668)", which
     # is too invasive (40 files + new abseil submodule) to backport.
     ./0009-rocprofiler-sdk-guard-ompt-auto-start.patch
+    ./ompt-explicit-tool.patch
   ];
 
   postPatch = ''
