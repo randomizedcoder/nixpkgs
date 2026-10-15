@@ -66,15 +66,6 @@ stdenv.mkDerivation (finalAttrs: {
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hipsparselt";
 
-  # stinkytofu (pulled in as a rocisa sibling) unconditionally include(ClangTidy)s
-  # from the monorepo top-level cmake/ dir, which our sparseCheckout omits (lint
-  # target we never build). Drop it (same ClangTidy fix as hipBLASLt).
-  postPatch = ''
-    substituteInPlace ../../shared/stinkytofu/CMakeLists.txt \
-      --replace-fail 'include(ClangTidy)' "" \
-      --replace-fail 'add_clang_tidy_custom_target()' ""
-  '';
-
   env.CXX = compiler;
   env.ROCM_PATH = "${clr}";
   env.TENSILE_ROCM_ASSEMBLER_PATH = lib.getExe' clr "amdclang++";
