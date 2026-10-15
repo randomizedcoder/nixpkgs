@@ -12,7 +12,8 @@
   rocsparse,
   suitesparse,
   gtest,
-  lapack-reference,
+  blas,
+  lapack,
   buildTests ? false,
   buildBenchmarks ? false,
   buildSamples ? false,
@@ -21,7 +22,7 @@
 # Can also use cuSOLVER
 stdenv.mkDerivation (finalAttrs: {
   pname = "hipsolver";
-  version = "7.2.4";
+  version = "10.1";
 
   outputs = [
     "out"
@@ -39,12 +40,12 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "ROCm";
     repo = "rocm-libraries";
-    tag = "rocm-${finalAttrs.version}";
+    tag = "therock-${finalAttrs.version}";
     sparseCheckout = [
       "projects/hipsolver"
       "shared"
     ];
-    hash = "sha256-ts5wuXHoBFZ1WMAk8Ir5cucP75G0SMOWmn3FEH04ZEQ=";
+    hash = "sha256-Djncqth/JEH1ko0iVvx3WdvK2UeK/Ywuwca9y4q2Xvg=";
   };
   sourceRoot = "${finalAttrs.src.name}/projects/hipsolver";
 
@@ -60,12 +61,12 @@ stdenv.mkDerivation (finalAttrs: {
     rocsolver
     rocsparse
     suitesparse
+    # Use packaged BLAS/LAPACK instead of downloading OpenBLAS during configuration.
+    blas
+    lapack
   ]
   ++ lib.optionals buildTests [
     gtest
-  ]
-  ++ lib.optionals (buildTests || buildBenchmarks) [
-    lapack-reference
   ];
 
   cmakeFlags = [
@@ -76,6 +77,12 @@ stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_INSTALL_INCLUDEDIR=include"
     "-DBUILD_WITH_SPARSE=OFF" # FIXME: broken - can't find suitesparse/cholmod, looks fixed in master
+    # Use system LAPACK for geev instead of the upstream default
+    # (git-clone + build a static OpenBLAS at configure — blocked in the sandbox).
+    "-DHIPSOLVER_INTERNAL_LAPACK_BUILD=OFF"
+    # Discover LAPACK in CMake MODULE mode (standard FindLAPACK) rather than
+    # The BLAS/LAPACK wrappers provide libraries without LAPACKConfig.cmake.
+    "-DHIPSOLVER_FIND_PACKAGE_LAPACK_CONFIG=OFF"
   ]
   ++ lib.optionals buildTests [
     "-DBUILD_CLIENTS_TESTS=ON"
