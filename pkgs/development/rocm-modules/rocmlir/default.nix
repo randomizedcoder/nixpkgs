@@ -2,7 +2,6 @@
   lib,
   stdenv,
   fetchFromGitHub,
-  rocmUpdateScript,
   cmake,
   rocm-cmake,
   clr,
@@ -53,12 +52,8 @@ stdenv.mkDerivation (finalAttrs: {
 
   src = fetchFromGitHub {
     owner = "ROCm";
-    # ROCm 10.1's AMDMIGraphX requirements.txt pins
-    # `ROCm/rocmlirTriton@release/rocm-rel-10.1` (-DBUILD_FAT_LIBROCKCOMPILER=On
-    # -DLLVM_INCLUDE_TESTS=Off ...), which replaces the old ROCm/rocMLIR repo. It
-    # has no ROCm 10.x tag, so track that branch's head commit; `version` above
-    # is the ROCm-set version. passthru.updateScript (page = "tags") cannot bump
-    # this until rocmlirTriton publishes a rocm-10.x tag.
+    # Snapshot of release/rocm-rel-10.1, the branch required by MIGraphX 10.1.
+    # Update this revision together with MIGraphX; the repository has no release tags.
     repo = "rocmlirTriton";
     rev = "f347064fea12aa0ab325e1244b65766652a2530c";
     hash = "sha256-w/eGFiXDfmY9Yog+U037mIG7wEQ9nD/m8z/2sErSuE8=";
@@ -171,14 +166,9 @@ stdenv.mkDerivation (finalAttrs: {
       patchelf --set-rpath $out/lib:$external/lib:${libPath} $out/{bin/*,lib/*.so*}
     '';
 
-  passthru.updateScript = rocmUpdateScript {
-    inherit finalAttrs;
-    page = "tags";
-  };
-
   meta = {
     description = "MLIR-based convolution and GEMM kernel generator";
-    homepage = "https://github.com/ROCm/rocMLIR";
+    homepage = "https://github.com/ROCm/rocmlirTriton";
     license = lib.licenses.asl20;
     teams = [ lib.teams.rocm ];
     platforms = lib.platforms.linux;
