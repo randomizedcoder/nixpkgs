@@ -1,14 +1,8 @@
 {
   lib,
   stdenv,
-  # Nixpkgs LLVM package set used as the base to override. ROCm therock-10.1's
-  # llvm-project is LLVM 24 and nixpkgs has no released llvmPackages_24. The base
-  # only supplies the shared packaging in compilers/llvm/common plus the bootstrap
-  # compiler and bintools: ROCm's LLVM is built from ROCm's own source below with
-  # `version = rocmLlvmVersion`, which selects the LLVM 24 patch set. The
-  # 24.0.0-git snapshot (`llvmPackages_git`) is not usable here: it is an alias
-  # reserved for testing, and its package-set splice points at that alias, so it
-  # cannot be evaluated with `allowAliases = false` (as nixpkgs CI does).
+  # Bootstrap the ROCm LLVM 24 sources using the LLVM 23 packaging base.
+  # llvmPackages_git cannot be used with allowAliases = false.
   llvmPackages_23,
   overrideCC,
   lndir,
