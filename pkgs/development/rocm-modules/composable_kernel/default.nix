@@ -7,14 +7,86 @@
 let
   inherit (composable_kernel_base) miOpenReqLibsOnly;
   parts = {
-    # In ROCm 10 CK's per-op conv instance libraries are OBJECT libraries aggregated
-    # into a single STATIC target `device_conv_operations`
-    # (library/src/tensor_operation_instance/gpu/CMakeLists.txt). Under
-    # MIOPEN_REQ_LIBS_ONLY (our default) that umbrella is the only conv target built
-    # (device_other/gemm/mha/contraction are gated NOT MIOPEN_REQ_LIBS_ONLY).
-    conv_ops = {
+    # Compile convolution OBJECT targets in groups; the final build archives them.
+    grouped_conv_bwd = {
       targets = [
-        "device_conv_operations"
+        "device_grouped_conv1d_bwd_weight_gnwc_instance"
+        "device_grouped_conv1d_bwd_weight_nwgc_instance"
+        "device_grouped_conv2d_bwd_data_nhwgc_instance"
+        "device_grouped_conv2d_bwd_data_gnhwc_instance"
+        "device_grouped_conv2d_bwd_data_ngchw_instance"
+        "device_grouped_conv2d_bwd_weight_nhwgc_instance"
+        "device_grouped_conv2d_bwd_weight_gnhwc_instance"
+        "device_grouped_conv2d_bwd_weight_ngchw_instance"
+      ];
+    };
+    grouped_conv_fwd = {
+      targets = [
+        "device_grouped_conv1d_fwd_gnwc_instance"
+        "device_grouped_conv2d_fwd_nhwgc_instance"
+        "device_grouped_conv2d_fwd_gnhwc_instance"
+        "device_grouped_conv2d_fwd_ngchw_instance"
+        "device_grouped_conv2d_fwd_bias_bnorm_clamp_nhwgc_instance"
+        "device_grouped_conv2d_fwd_bias_clamp_nhwgc_instance"
+        "device_grouped_conv2d_fwd_clamp_nhwgc_instance"
+        "device_grouped_conv2d_fwd_dynamic_op_nhwgc_instance"
+      ];
+    };
+    grouped_conv_bwd_3d1 = {
+      targets = [
+        "device_grouped_conv3d_bwd_data_ndhwgc_instance"
+        "device_grouped_conv3d_bwd_data_gndhwc_instance"
+        "device_grouped_conv3d_bwd_data_ngcdhw_instance"
+        "device_grouped_conv3d_bwd_data_bilinear_ndhwgc_instance"
+        "device_grouped_conv3d_bwd_data_scale_ndhwgc_instance"
+      ];
+    };
+    grouped_conv_bwd_3d2 = {
+      targets = [
+        "device_grouped_conv3d_bwd_weight_ndhwgc_instance"
+        "device_grouped_conv3d_bwd_weight_gndhwc_instance"
+        "device_grouped_conv3d_bwd_weight_ngcdhw_instance"
+        "device_grouped_conv3d_bwd_weight_bilinear_ndhwgc_instance"
+        "device_grouped_conv3d_bwd_weight_scale_ndhwgc_instance"
+      ];
+    };
+    grouped_conv_fwd_3d1 = {
+      targets = [
+        "device_grouped_conv3d_fwd_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_gndhwc_instance"
+        "device_grouped_conv3d_fwd_ngcdhw_instance"
+        "device_grouped_conv3d_fwd_clamp_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_bias_bnorm_clamp_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_bias_bnorm_clamp_nhwgc_instance"
+        "device_grouped_conv3d_fwd_bias_clamp_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_bilinear_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_convinvscale_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_convscale_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_convscale_add_ndhwgc_instance"
+      ];
+    };
+    grouped_conv_fwd_3d2 = {
+      targets = [
+        "device_grouped_conv3d_fwd_convscale_relu_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_dynamic_op_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_scale_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_scaleadd_ab_ndhwgc_instance"
+        "device_grouped_conv3d_fwd_scaleadd_scaleadd_relu_ndhwgc_instance"
+      ];
+    };
+    grouped_conv_fwd_nd = {
+      targets = [
+        "device_grouped_convnd_bwd_weight_instance"
+      ];
+    };
+    conv_other = {
+      targets = [
+        "device_conv1d_bwd_data_instance"
+        "device_conv2d_bwd_data_instance"
+        "device_conv2d_fwd_instance"
+        "device_conv2d_fwd_bias_relu_instance"
+        "device_conv2d_fwd_bias_relu_add_instance"
+        "device_conv3d_bwd_data_instance"
       ];
     };
     _mha = {
@@ -181,7 +253,18 @@ let
         makeTargets = targets;
         preBuild = ''
           echo "Building ${part}"
-          makeFlagsArray+=($makeTargets)
+          # CMake omits layouts and data types excluded by the package configuration.
+          partTargets=()
+          for target in $makeTargets; do
+            if grep -q "^$target:" Makefile; then
+              partTargets+=("$target")
+            fi
+          done
+          if (( ''${#partTargets[@]} == 0 )); then
+            mkdir -p "$out"
+            exit 0
+          fi
+          makeFlagsArray+=("''${partTargets[@]}")
           substituteInPlace $(find ./ -name "Makefile" -type f) \
             --replace-fail '.NOTPARALLEL:' '.UNUSED_NOTPARALLEL:'
         '';
@@ -192,19 +275,8 @@ let
         # Nix/nixpkgs doesn't really have any infra to tell it that this build is unusually memory hungry
         # So, bodge. Otherwise you end up having to build all of ROCm with a low core limit when
         # it's only this package that has trouble.
-        preConfigure = old.preConfigure or "" + ''
-          # Drop the cc-wrapper's "-rpath $out/lib" self-reference
-          # from NIX_LDFLAGS for the split "parts" builds. clang-24 forwards
-          # NIX_LDFLAGS to the HIP *device* linker, so every instance's device code
-          # object is stamped with DT_RUNPATH=$out/lib. That RUNPATH gets baked into
-          # the --offload-compress'd .hip_fatbin (a CCOB integrity-checked blob, so it
-          # cannot be scrubbed post-hoc with remove-references-to without corrupting
-          # the device code), and because these .o are copied from the part's store
-          # output into the final CK derivation it becomes a disallowed cross-reference
-          # (disallowedReferences fails). The parts only emit relocatable .o, so the
-          # self-rpath is useless here; removing it leaves nothing to leak while
-          # keeping offload compression. Scrub the plain var and any role-suffixed
-          # copies the bintools wrapper may already hold.
+        preConfigure = (old.preConfigure or "") + ''
+          # Avoid embedding a reference to the part in compressed device objects.
           for _v in NIX_LDFLAGS ''${!NIX_LDFLAGS_*}; do
             printf -v "$_v" '%s' "$(sed "s| *-rpath $out/lib||g" <<< "''${!_v-}")"
             export "$_v"
