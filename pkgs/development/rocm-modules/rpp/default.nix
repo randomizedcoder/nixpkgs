@@ -78,8 +78,9 @@ stdenv.mkDerivation (finalAttrs: {
     # linked PRIVATE, so targets built against rpp (the in-tree
     # test_rpp_backend_macro) cannot find it. Export it as a PUBLIC dependency.
     ''
-      sed -i 's|^\(set_target_properties(''${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)\)$|target_link_libraries(''${PROJECT_NAME} PUBLIC HALF::half)\n\1|' CMakeLists.txt
-      grep -q 'PUBLIC HALF::half' CMakeLists.txt
+      substituteInPlace CMakeLists.txt \
+        --replace-fail 'set_target_properties(''${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)' \
+          $'target_link_libraries(''${PROJECT_NAME} PUBLIC HALF::half)\nset_target_properties(''${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)'
     ''
     + lib.optionalString (!useCPU) ''
       # Bad path
