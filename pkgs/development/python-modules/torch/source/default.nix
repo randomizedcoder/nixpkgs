@@ -578,10 +578,7 @@ buildPythonPackage.override { inherit stdenv; } (finalAttrs: {
     ]
   )
   ++ lib.optionals isCudaJetson [ cudaPackages.autoAddCudaCompatRunpath ]
-  ++ lib.optionals rocmSupport [
-    rocmtoolkit_joined
-    libdrm
-  ];
+  ++ lib.optionals rocmSupport [ rocmtoolkit_joined ];
 
   buildInputs = [
     blas

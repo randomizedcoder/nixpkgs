@@ -50,10 +50,10 @@ Keep the separate glog initialization guard for early explicit tool loading.
 @@ -50,6 +50,9 @@
  init_logging();
  
- // initialize the clients
 +bool
 +is_tool_requested();
 +
+ // initialize the clients
  void
  initialize();
  
