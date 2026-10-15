@@ -228,14 +228,9 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeBool "MIOPEN_USE_COMPOSABLEKERNEL" withComposableKernel)
     (lib.cmakeBool "MIOPEN_USE_HIPRTC" true)
     (lib.cmakeBool "MIOPEN_USE_COMGR" true)
-    # Disable the vendored `hipconv` convolution subsystem (new in 10.1). It serves
-    # only cdna3/cdna4/cdna5 (gfx942/gfx950 and newer). Its CMake unconditionally
-    # compiles every arch dir under src/hipconv/src/arch/*, and the cdna4
-    # `direct_wgrad` kernels do not compile with clang 24, which rejects their
-    # `static constexpr` members and `constexpr` variable templates as "reference to
-    # __host__ variable in __device__ function". conv_hipconv.cpp self-guards on
-    # MIOPEN_USE_HIPCONV, so other targets are unaffected. Re-enable once the
-    # kernels build with clang 24.
+    # hipconv's cdna4 direct_wgrad kernels fail with clang 24:
+    # "reference to __host__ variable in __device__ function".
+    # Disable hipconv for all targets until those kernels compile.
     (lib.cmakeBool "MIOPEN_USE_HIPCONV" false)
     "-DCMAKE_HIP_COMPILER_ROCM_ROOT=${clr}"
     # Manually define CMAKE_INSTALL_<DIR>
