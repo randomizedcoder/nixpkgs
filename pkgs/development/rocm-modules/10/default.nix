@@ -148,6 +148,11 @@ let
 
       rocalution = self.callPackage ./rocalution { };
 
+      rocmlir-rock = self.callPackage ./rocmlir {
+        buildRockCompiler = true;
+      };
+      rocmlir = self.rocmlir-rock;
+
       hipsolver = self.callPackage ./hipsolver { };
 
       hipblas-common = self.callPackage ./hipblas-common { };
