@@ -106,7 +106,8 @@ stdenv.mkDerivation (finalAttrs: {
   # empties the supported-target list and aborts with "Unsupported target <arch>".
   # Only builds with tests/benchmarks hit this; the Tensile shards build with them off.
   env.LDFLAGS =
-    "-Wl,--as-needed -lzstd"
+    "-Wl,--as-needed"
+    + lib.optionalString buildTensile " -lzstd"
     + lib.optionalString (buildTests || buildBenchmarks) " -L${amd-blis}/lib -lcblas";
   env.TENSILE_ROCM_ASSEMBLER_PATH = "${stdenv.cc}/bin/clang++";
 
@@ -162,8 +163,8 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   postInstall =
-    # tensile isn't needed at runtime and pulls in ~400MB of python deps
-    ''
+    # Tensile is only needed while generating kernels.
+    lib.optionalString buildTensile ''
       remove-references-to -t ${tensile} \
         "$out/lib/librocblas.so."*
     ''
