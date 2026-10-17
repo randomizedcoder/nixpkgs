@@ -1,17 +1,6 @@
-# rocBLAS with its Tensile kernels built as one shard per GPU architecture, so
-# adding or changing one architecture rebuilds only that architecture's kernels.
-#
-# rocBLAS builds Tensile with SEPARATE_ARCHITECTURES + LAZY_LIBRARY_LOADING, which
-# gives one self-contained lib/rocblas/library/<gfx>/ directory per architecture
-# (its own TensileLibrary_lazy_<gfx>.dat index plus code objects). In a shared
-# build the kernels are not linked into librocblas.so; it opens that directory by
-# path at runtime. The join is therefore a plain directory merge with no relink:
-# librocblas.so, headers and CMake files are built once for the first
-# architecture and every other architecture's shard directory is copied in.
-# Other layouts (single architecture, no Tensile, non-lazy) use the base build.
-#
-# Overrides (e.g. rocblas.override { buildTests = false; }) are forwarded to
-# ./base.nix; its passthru reports the effective settings.
+# One Tensile shard per GPU architecture. With separate architectures and lazy
+# loading, librocblas.so opens lib/rocblas/library/<gfx>/ at runtime, so the
+# shards join by directory merge. Other layouts use ./base.nix directly.
 {
   lib,
   clr,

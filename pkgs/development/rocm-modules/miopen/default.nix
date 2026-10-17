@@ -10,7 +10,7 @@
   cmake,
   rocm-cmake,
   rocblas,
-  rocmlir,
+  rocmlir-triton,
   rocrand,
   rocm-runtime,
   hipblas-common,
@@ -45,9 +45,7 @@
 
 let
   # FIXME: cmake files need patched to include this properly
-  # -Wno-covered-switch-default: MIOpen builds -Werror and the ROCm clang flags
-  # nixpkgs nlohmann_json 3.12.0 switch(...) default labels. -isystem the
-  # nlohmann headers so its header warnings are not treated as MIOpen -Werror errors.
+  # nlohmann_json 3.12 headers warn under MIOpen's -Werror.
   cFlags = "-Wno-documentation-pedantic -Wno-covered-switch-default --offload-compress -I${hipblas-common}/include -I${hipblas}/include -I${roctracer}/include -isystem ${nlohmann_json}/include -I${sqlite.dev}/include -I${rocrand}/include";
   version = "10.1";
 
@@ -175,7 +173,7 @@ stdenv.mkDerivation (finalAttrs: {
     hipblas
     hipblas-common
     rocblas
-    rocmlir
+    rocmlir-triton
     half
     boost
     sqlite
@@ -205,10 +203,7 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   cmakeFlags = [
-    # MIOpen defaults MIOPEN_STANDALONE_BUILD=ON (when no toolchain
-    # file is set, as here), which FetchContents Eigen/nlohmann_json/frugally-deep/
-    # bzip2/sqlite/gtest at configure — blocked in the Nix sandbox. Turn it OFF and
-    # rely on the deps provided via buildInputs (find_package resolves them).
+    # The standalone build FetchContents its dependencies.
     (lib.cmakeBool "MIOPEN_STANDALONE_BUILD" false)
     "-DAMDGPU_TARGETS=${lib.concatStringsSep ";" supportedTargets}"
     "-DGPU_TARGETS=${lib.concatStringsSep ";" supportedTargets}"
@@ -228,9 +223,7 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeBool "MIOPEN_USE_COMPOSABLEKERNEL" withComposableKernel)
     (lib.cmakeBool "MIOPEN_USE_HIPRTC" true)
     (lib.cmakeBool "MIOPEN_USE_COMGR" true)
-    # hipconv's cdna4 direct_wgrad kernels fail with clang 24:
-    # "reference to __host__ variable in __device__ function".
-    # Disable hipconv for all targets until those kernels compile.
+    # hipconv's cdna4 kernels fail with clang 24 ("reference to __host__ variable in __device__ function").
     (lib.cmakeBool "MIOPEN_USE_HIPCONV" false)
     "-DCMAKE_HIP_COMPILER_ROCM_ROOT=${clr}"
     # Manually define CMAKE_INSTALL_<DIR>
@@ -246,18 +239,11 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   postPatch = ''
-    # MIOpen forces its own cmake/ClangToolChain.cmake as
-    # CMAKE_TOOLCHAIN_FILE when the caller passes none, which overrides the
-    # nixpkgs rocmClangStdenv compiler setup and leaves CMAKE_MAKE_PROGRAM unset.
-    # Disable that auto-set (the else branch then also makes the standalone
-    # default OFF, matching -DMIOPEN_STANDALONE_BUILD=OFF).
+    # Keep the rocmClangStdenv compiler instead of MIOpen's ClangToolChain.cmake.
     substituteInPlace CMakeLists.txt \
       --replace-fail 'if(NOT CMAKE_TOOLCHAIN_FILE AND NOT DEFINED ENV{CMAKE_TOOLCHAIN_FILE})' 'if(FALSE)'
 
-    # MIOpen builds -Werror, but the ROCm 10 clang + C++20
-    # emit new warnings from MIOpen's own code and newer standard/3rd-party headers
-    # (e.g. <ciso646> deprecation, covered-switch-default). Downgrade -Werror rather
-    # than chase each warning (matches how composable_kernel neutralises -Werror).
+    # ROCm 10 clang and C++20 add warnings throughout; drop -Werror like composable_kernel.
     substituteInPlace cmake/EnableCompilerWarnings.cmake \
       --replace-fail '    -Werror' '    -Wno-error'
 
@@ -270,10 +256,7 @@ stdenv.mkDerivation (finalAttrs: {
 
     patchShebangs test fin utils install_deps.cmake
 
-    # comgr.cpp reads the ROCM_PATH env var (no more /opt/rocm
-    # hardcode) and adds no include path when it is unset. Bake our curated
-    # hiprtc ROCm tree in as the fallback so runtime hiprtc kernel compilation
-    # (e.g. from torch) still finds ROCm headers when ROCM_PATH is not exported.
+    # Runtime hiprtc compilation finds ROCm headers only through ROCM_PATH; default it.
     substituteInPlace src/comgr.cpp \
       --replace-fail 'auto rocm_path = env::value(ROCM_PATH);' 'auto rocm_path = env::value(ROCM_PATH);
         if(rocm_path.empty())

@@ -13,7 +13,7 @@
   hipblas-common,
   hipblas,
   hipblaslt,
-  rocmlir,
+  rocmlir-triton,
   miopen,
   protobuf,
   abseil-cpp,
@@ -108,7 +108,7 @@ stdenv.mkDerivation (finalAttrs: {
     hipblas-common
     hipblas
     hipblaslt
-    rocmlir
+    rocmlir-triton
     miopen
     protobuf
     half
@@ -149,7 +149,7 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   postPatch = ''
-        export CXXFLAGS+=" -w -isystem${rocmlir}/include/rocmlir -I${half}/include -I${lib.getInclude abseil-cpp'}/include -I${hipblas-common}/include -I${lib.getInclude protobuf}/include"
+        export CXXFLAGS+=" -w -isystem${rocmlir-triton}/include/rocmlir -I${half}/include -I${lib.getInclude abseil-cpp'}/include -I${hipblas-common}/include -I${lib.getInclude protobuf}/include"
         patchShebangs tools
 
         # `error: '__clang_hip_runtime_wrapper.h' file not found [clang-diagnostic-error]`

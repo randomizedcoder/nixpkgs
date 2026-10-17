@@ -148,10 +148,10 @@ let
 
       rocalution = self.callPackage ./rocalution { };
 
-      rocmlir-rock = self.callPackage ./rocmlir {
+      # ROCm/rocMLIR has no ROCm 10 release; MIGraphX 10.1 pins this fork.
+      rocmlir-triton = self.callPackage ./rocmlir-triton {
         buildRockCompiler = true;
       };
-      rocmlir = self.rocmlir-rock;
 
       hipsolver = self.callPackage ./hipsolver { };
 
@@ -250,6 +250,12 @@ let
       };
     }
     // lib.optionalAttrs config.allowAliases {
+      rocmlir = throw ''
+        'rocmlir' (ROCm/rocMLIR) has no ROCm 10 release. MIGraphX and MIOpen use
+        'rocmlir-triton', the fork that MIGraphX pins.
+      ''; # Added 2026-10-17
+      rocmlir-rock = throw "'rocmlir-rock' has been replaced by 'rocmlir-triton'"; # Added 2026-10-17
+
       rocm-bandwidth-test = throw ''
         'rocm-bandwidth-test' has been removed as it is no longer maintained upstream.
       ''; # Added 2026-10-14

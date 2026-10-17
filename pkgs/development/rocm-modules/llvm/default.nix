@@ -1,10 +1,8 @@
 {
   lib,
   stdenv,
-  # Packaging base for ROCm's LLVM 24 sources: it only supplies
-  # compilers/llvm/common and the bootstrap toolchain; `version` below selects
-  # the LLVM 24 patch set. There is no llvmPackages_24, and llvmPackages_git is
-  # a testing alias that cannot evaluate with allowAliases = false (as in CI).
+  # Packaging base only; there is no llvmPackages_24, and the llvmPackages_git
+  # alias fails with allowAliases = false.
   llvmPackages_23,
   overrideCC,
   lndir,
@@ -215,16 +213,7 @@ let
 
         # Clang config file: redirect resource dir to the sysroot (where compiler-rt
         # lives) and set GCC install prefix for header/library search
-        #
-        # LLVM 24's clang-linker-wrapper links libzstd when it combines offloaded
-        # device images with compression (--offload-compress is on by default here,
-        # and rocBLAS/CK/etc. also request it via BUILD_OFFLOAD_COMPRESS). Nothing
-        # else puts -lzstd on the unwrapped toolchain's link path, so e.g. rocm-cmake's
-        # `rocm_check_target_ids` HIP probe (`clang++ -xhip --offload-arch=... --hip-link`)
-        # fails with "clang-linker-wrapper: error: unable to find library -lzstd".
-        # Put zstd's lib dir on the toolchain's default link path so every
-        # rocmClangStdenv consumer finds it, matching the zstd the toolchain's own
-        # LLVM was linked against.
+        # -L zstd: clang-linker-wrapper links -lzstd for compressed offload images.
         cat > $out/bin/${stdenv.hostPlatform.config}.cfg <<CFG
         -resource-dir=$out/lib/clang/${llvmMajorVersion}
         -L${zstd.out}/lib
@@ -373,11 +362,8 @@ overrideLlvmPackagesRocm (s: {
           ./clang-bodge-ignore-systemwide-incls.diff
           ./opt-offload-compress-on-by-default.patch
           ./perf-shorten-gcclib-include-paths.patch
-          # Adds a public, set-returning OffloadBundler::GetBundleIDsInFile. The
-          # rocm-comgr ISA-compat patch (comgr-isa-compat-ccob.patch) calls it, while
-          # upstream clang only has the print-only ListBundleIDsInFile. Rebased from
-          # GZGavinZhao/rocm-llvm-project c7de294b onto LLVM 24, whose
-          # ListBundleIDsInFile and CompressedOffloadBundle::decompress changed shape.
+          # For comgr-isa-compat-ccob.patch; rebased from
+          # GZGavinZhao/rocm-llvm-project c7de294b.
           ./clang-add-getbundleidsinfile.diff
         ];
         hardeningDisable = [ "all" ];
@@ -492,7 +478,7 @@ overrideLlvmPackagesRocm (s: {
           ln -s $out/lib/libomp.so $dev/lib/libomp.so
         '';
       });
-  # AMD has a separate MLIR impl which we package under rocmPackages.rocmlir
+  # AMD has a separate MLIR impl which we package under rocmPackages.rocmlir-triton
   # It would be an error to rely on the original mlir package from this scope
   mlir = null;
 })

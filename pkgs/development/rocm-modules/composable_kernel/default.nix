@@ -251,10 +251,8 @@ let
         makeTargets = targets;
         preBuild = ''
           echo "Building ${part}"
-          # CMake only generates the targets the configured GPU targets and
-          # MIOPEN_REQ_LIBS_ONLY select; build those. A target missing from the
-          # source is a stale entry (renamed or removed upstream): fail, rather
-          # than let the final build silently compile it in one unsplit step.
+          # Build the targets this configuration generates; fail on names the CK
+          # source no longer defines, so they are not compiled unsplit later.
           partTargets=()
           for target in $makeTargets; do
             if grep -q "^$target:" Makefile; then
@@ -282,12 +280,8 @@ let
         # So, bodge. Otherwise you end up having to build all of ROCm with a low core limit when
         # it's only this package that has trouble.
         preConfigure = (old.preConfigure or "") + ''
-          # clang 24 forwards NIX_LDFLAGS to the HIP device linker, so the
-          # cc-wrapper's "-rpath $out/lib" lands in each part's compressed,
-          # integrity-checked .hip_fatbin. It cannot be scrubbed afterwards, and
-          # once the .o files are copied into the final build it becomes a
-          # disallowed reference to the part. The parts only emit relocatable
-          # objects, so drop the self-rpath.
+          # clang 24 passes NIX_LDFLAGS' self-rpath into the compressed .hip_fatbin,
+          # where it cannot be scrubbed; the parts only emit objects.
           for _v in NIX_LDFLAGS ''${!NIX_LDFLAGS_*}; do
             printf -v "$_v" '%s' "$(sed "s| *-rpath $out/lib||g" <<< "''${!_v-}")"
             export "$_v"

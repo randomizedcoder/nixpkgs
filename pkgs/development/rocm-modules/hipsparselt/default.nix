@@ -55,9 +55,7 @@ stdenv.mkDerivation (finalAttrs: {
       "projects/hipblaslt/tensilelite"
       "projects/hipblaslt/cmake"
       "projects/hipblaslt/device-library"
-      # hipsparselt configures hipBLASLt's CMakeLists (for rocisa), whose
-      # configure_file needs library/include/hipblaslt-version.h.in
-      # (248K of headers only — not the ~476M library yaml tree).
+      # hipBLASLt's CMakeLists, configured for rocisa, needs hipblaslt-version.h.in.
       "projects/hipblaslt/library/include"
       "shared/origami"
       # rocisa (tensilelite/rocisa/CMakeLists.txt) add_subdirectory's stinkytofu
@@ -70,15 +68,8 @@ stdenv.mkDerivation (finalAttrs: {
   env.ROCM_PATH = "${clr}";
   env.TENSILE_ROCM_ASSEMBLER_PATH = lib.getExe' clr "amdclang++";
   env.TENSILE_GEN_ASSEMBLY_TOOLCHAIN = lib.getExe' clr "amdclang++";
-  # tensilelite's HelperKernelCache defaults its cache dir to
-  # $HOME/.tensile/helper_cache; the Nix sandbox $HOME (/homeless-shelter) is
-  # unwritable, so store() -> mkdir raises PermissionError right after codegen
-  # (same failure as hipBLASLt). Disable the Nix-useless cross-invocation cache
-  # and point HOME at $TMPDIR belt-and-suspenders.
+  # The tensilelite helper cache defaults to the unwritable $HOME/.tensile.
   env.TENSILE_DISABLE_HELPER_CACHE = "1";
-  preBuild = ''
-    export HOME=$TMPDIR
-  '';
 
   requiredSystemFeatures = [ "big-parallel" ];
 

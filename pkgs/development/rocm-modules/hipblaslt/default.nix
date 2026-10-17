@@ -133,19 +133,13 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   postPatch = ''
-    # The shared dep `origami` (pulled via add_subdirectory) requires Git only to
-    # guard a FetchContent fallback that downloads rocm-cmake, which we never hit
-    # (ROCmCMakeBuildTools is provided + -DROCM_FOUND=ON), so drop the hard requirement.
+    # origami needs Git only for a rocm-cmake FetchContent fallback we never take.
     substituteInPlace ../../shared/origami/cmake/dependencies.cmake \
       --replace-fail "find_package(Git REQUIRED)" ""
 
 
 
-    # messagepack-compression-support.patch calls ZSTD_* in MessagePack.cpp
-    # (compiled into the tensilelite-host static lib). The amdclang toolchain
-    # ignores NIX_LDFLAGS (same reason cFlags passes -I for zstd/blis by hand),
-    # so link libzstd explicitly here; PRIVATE on a static lib propagates the
-    # requirement to every consumer (hipblaslt-bench, libhipblaslt.so, tests).
+    # For messagepack-compression-support.patch; amdclang ignores NIX_LDFLAGS.
     echo 'target_link_libraries(tensilelite-host PRIVATE ${lib.getLib zstd}/lib/libzstd.so)' \
       >> tensilelite/src/msgpack/CMakeLists.txt
   '';
@@ -207,13 +201,8 @@ stdenv.mkDerivation (finalAttrs: {
     "-DBLIS_INCLUDE_DIR=${amd-blis}/include/blis/"
     "-DBLA_PREFER_PKGCONFIG=ON"
     "-DFETCHCONTENT_SOURCE_DIR_NANOBIND=${python3Packages.nanobind.src}"
-    # cmake >= 4.4 re-runs cmake mid-build (`--regenerate-during-build`) when Tensile codegen writes into a
-    # CONFIGURE_DEPENDS-globbed path. On that reconfigure rocisa's FetchContent
-    # nanobind is already populated, so FetchContent_MakeAvailable no longer
-    # re-runs add_subdirectory and `nanobind_add_module`
-    # (tensilelite/rocisa/CMakeLists.txt:109) is left undefined -> configure dies.
-    # The target graph does not change mid-build, so suppress the spurious
-    # regeneration rule (Ninja generator honours this).
+    # Tensile codegen writes into a CONFIGURE_DEPENDS glob; the mid-build re-run
+    # of cmake >= 4.4 then loses nanobind_add_module.
     (lib.cmakeBool "CMAKE_SUPPRESS_REGENERATION" true)
     # Manually define CMAKE_INSTALL_<DIR>
     # See: https://github.com/NixOS/nixpkgs/pull/197838
@@ -242,10 +231,7 @@ stdenv.mkDerivation (finalAttrs: {
         mkdir -p $sample/bin
         mv $out/bin/example-* $sample/bin
       ''}
-      # $out is the library output and keeps no bin/. Everything installed there is
-      # a client/benchmark tool + its yaml/py support (hipblaslt-cotenant{,-kernel},
-      # hipblaslt-perf, bench, api-overhead, ...), so after routing any test/sample binaries above, move the rest to
-      # $benchmark wholesale rather than an explicit list that breaks on new tools.
+      # Everything else in bin/ is a benchmark tool.
       mv $out/bin/* $benchmark/bin
       rmdir $out/bin
     '';

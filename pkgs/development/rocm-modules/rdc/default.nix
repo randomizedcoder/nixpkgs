@@ -74,7 +74,7 @@ stdenv.mkDerivation (finalAttrs: {
   sourceRoot = "${finalAttrs.src.name}/projects/rdc";
 
   patches = [
-    # https://github.com/ROCm/rocm-systems/pull/2424
+    # Find libcap through pkg-config (https://github.com/ROCm/rocm-systems/pull/2424, closed)
     ./fix-libcap-pkgconfig.patch
   ];
 

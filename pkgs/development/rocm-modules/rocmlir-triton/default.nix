@@ -40,7 +40,7 @@ let
       throw "Unsupported ROCm LLVM platform";
 in
 stdenv.mkDerivation (finalAttrs: {
-  pname = "rocmlir${suffix}";
+  pname = "rocmlir-triton${suffix}";
   version = "10.1";
 
   outputs = [
@@ -167,7 +167,7 @@ stdenv.mkDerivation (finalAttrs: {
     '';
 
   meta = {
-    description = "MLIR-based convolution and GEMM kernel generator";
+    description = "Fork of rocMLIR, the MLIR-based convolution and GEMM kernel generator, used by MIGraphX";
     homepage = "https://github.com/ROCm/rocmlirTriton";
     license = lib.licenses.asl20;
     teams = [ lib.teams.rocm ];

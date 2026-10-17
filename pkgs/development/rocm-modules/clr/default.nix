@@ -212,12 +212,8 @@ stdenv.mkDerivation (finalAttrs: {
     ln -s ${rocminfo}/bin/* $out/bin
     ln -s ${rocm-core}/include/* $out/include/
 
-    # CLR 10.1 installs a distro-style ICD vendor file (bare "libamdocl64.so")
-    # and an ld.so.conf.d snippet pointing at /opt/rocm/lib into $out/etc.
-    # Neither works here, and the NixOS amdgpu module puts both $out and $icd
-    # into hardware.graphics.extraPackages, so the vendor file would collide
-    # with the one $icd provides below. Remove them; rmdir fails loudly if a
-    # future release adds anything else under $out/etc.
+    # Installed by opencl/CMakeLists.txt; the ICD file would collide with $icd's.
+    # https://github.com/ROCm/rocm-systems/blob/therock-10.1/projects/clr/opencl/CMakeLists.txt#L124-L143
     rm $out/etc/OpenCL/vendors/amdocl64.icd $out/etc/ld.so.conf.d/10-rocm-opencl.conf
     rmdir $out/etc/OpenCL/vendors $out/etc/OpenCL $out/etc/ld.so.conf.d $out/etc
 

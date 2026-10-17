@@ -78,8 +78,7 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   buildInputs = [
-    # CMakeLists.txt: find_package(amd_smi), gated on ROCM_VERSION >= 71100.
-    # SMI is lazily dlopen'd at runtime; headers needed for the fabric probe.
+    # Headers only; RCCL dlopens amd_smi at runtime.
     amdsmi
     fmt
     gtest
@@ -99,7 +98,6 @@ stdenv.mkDerivation (finalAttrs: {
     "-DROCM_PATCH_VERSION=${rocm-core.ROCM_LIBPATCH_VERSION}"
     "-DROCM_VERSION=${rocm-core.ROCM_LIBPATCH_VERSION}"
     "-DBUILD_BFD=OFF" # Can't get it to detect bfd.h
-    "-DENABLE_MSCCL_KERNEL=ON"
     # Manually define CMAKE_INSTALL_<DIR>
     # See: https://github.com/NixOS/nixpkgs/pull/197838
     "-DCMAKE_INSTALL_BINDIR=bin"

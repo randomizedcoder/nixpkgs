@@ -45,12 +45,7 @@ stdenv.mkDerivation (finalAttrs: {
     mpi
   ];
 
-  # rocSHMEM compiles device-side bitcode (cmake/DeviceBitcode.cmake)
-  # with a manual clang command whose -I list only covers rocSHMEM's own headers
-  # (+ MPI). Unlike the host librocshmem.a target — which gets HSA headers from the
-  # hsa-runtime64::hsa-runtime64 link interface — that command never sees
-  # <hsa/hsa.h> (util.hpp), so the bitcode build fails with "'hsa/hsa.h' file not
-  # found". Add rocm-runtime's include dir to the bitcode flags.
+  # The device bitcode command does not see the HSA headers the host target gets.
   postPatch = ''
     substituteInPlace cmake/DeviceBitcode.cmake \
       --replace-fail \

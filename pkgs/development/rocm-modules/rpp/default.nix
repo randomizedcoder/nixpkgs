@@ -61,22 +61,14 @@ stdenv.mkDerivation (finalAttrs: {
     "-DAMDGPU_TARGETS=${lib.concatStringsSep ";" gpuTargets}"
   ];
 
-  # With -fopenmp the clang driver adds `<clang prefix>/../include` as a plain -I
-  # to find omp.h. In the merged rocm-toolchain that directory also holds the
-  # glibc headers, so stdlib.h is no longer a system header and clang 24 rejects
-  # mm_malloc.h's redeclaration of posix_memalign ("missing exception
-  # specification 'noexcept(true)'", glibc >= 2.44). Listing the same directory
-  # as -isystem makes clang drop the -I and treat it as system again. Only the
-  # CPU backend compiles with the toolchain's clang++ directly; the HIP backend
-  # goes through hipcc, whose prefix does not contain libc headers.
+  # -fopenmp adds the toolchain include dir, which holds glibc's headers, as a
+  # plain -I; keep it a system dir so mm_malloc.h compiles with glibc >= 2.44.
   env = lib.optionalAttrs useCPU {
     CXXFLAGS = "-isystem ${stdenv.cc}/include";
   };
 
   postPatch =
-    # The public API header api/rppdefs.h includes <half.hpp>, but HALF::half is
-    # linked PRIVATE, so targets built against rpp (the in-tree
-    # test_rpp_backend_macro) cannot find it. Export it as a PUBLIC dependency.
+    # api/rppdefs.h includes <half.hpp>, so half must be a PUBLIC dependency.
     ''
       substituteInPlace CMakeLists.txt \
         --replace-fail 'set_target_properties(''${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)' \
