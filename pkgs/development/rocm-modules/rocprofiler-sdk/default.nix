@@ -104,7 +104,9 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   patches = [
-    # OpenMP can discover the SDK before glog's static initialization finishes.
+    # OpenMP can call ompt_start_tool before glog's static initialization has
+    # run, which segfaults. Upstream drops glog for Abseil logging in
+    # rocm-systems d80117889b3f (#4668), too invasive to backport.
     ./0009-rocprofiler-sdk-guard-ompt-auto-start.patch
     ./ompt-explicit-tool.patch
   ];

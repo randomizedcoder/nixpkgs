@@ -1,8 +1,10 @@
 {
   lib,
   stdenv,
-  # Bootstrap the ROCm LLVM 24 sources using the LLVM 23 packaging base.
-  # llvmPackages_git cannot be used with allowAliases = false.
+  # Packaging base for ROCm's LLVM 24 sources: it only supplies
+  # compilers/llvm/common and the bootstrap toolchain; `version` below selects
+  # the LLVM 24 patch set. There is no llvmPackages_24, and llvmPackages_git is
+  # a testing alias that cannot evaluate with allowAliases = false (as in CI).
   llvmPackages_23,
   overrideCC,
   lndir,

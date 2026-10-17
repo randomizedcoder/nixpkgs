@@ -61,7 +61,11 @@ stdenv.mkDerivation (finalAttrs: {
     rocsolver
     rocsparse
     suitesparse
-    # Use packaged BLAS/LAPACK instead of downloading OpenBLAS during configuration.
+    # CPU LAPACK for geev (not yet in rocSOLVER), instead of the OpenBLAS that
+    # upstream downloads at configure time. Use the openblas-backed (LP64)
+    # blas/lapack wrappers, not lapack-reference: its ILP64 libblas.so.3 clashes
+    # with numpy's openblas in one process (`import torch` fails with
+    # "undefined symbol: cherk_64_").
     blas
     lapack
   ]
@@ -80,8 +84,8 @@ stdenv.mkDerivation (finalAttrs: {
     # Use system LAPACK for geev instead of the upstream default
     # (git-clone + build a static OpenBLAS at configure — blocked in the sandbox).
     "-DHIPSOLVER_INTERNAL_LAPACK_BUILD=OFF"
-    # Discover LAPACK in CMake MODULE mode (standard FindLAPACK) rather than
-    # The BLAS/LAPACK wrappers provide libraries without LAPACKConfig.cmake.
+    # Use CMake's FindLAPACK module: the openblas-backed wrappers ship no
+    # LAPACKConfig.cmake (only lapack-reference does).
     "-DHIPSOLVER_FIND_PACKAGE_LAPACK_CONFIG=OFF"
   ]
   ++ lib.optionals buildTests [

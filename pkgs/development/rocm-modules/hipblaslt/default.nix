@@ -97,7 +97,8 @@ stdenv.mkDerivation (finalAttrs: {
   env.TENSILE_GEN_ASSEMBLY_TOOLCHAIN = lib.getExe' clr "amdclang++";
   env.LD_PRELOAD = "${jemalloc}/lib/libjemalloc.so";
   env.MALLOC_CONF = "background_thread:true,metadata_thp:auto,dirty_decay_ms:10000,muzzy_decay_ms:10000";
-  # The helper-kernel cache defaults to an unwritable home directory in the sandbox.
+  # tensilelite caches helper-kernel code objects in $HOME/.tensile, which is
+  # unwritable in the sandbox, and a cache across builds is useless under Nix.
   env.TENSILE_DISABLE_HELPER_CACHE = "1";
   requiredSystemFeatures = [ "big-parallel" ];
 
