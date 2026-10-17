@@ -1,39 +1,44 @@
+# rocBLAS with its Tensile kernels built as one shard per GPU architecture, so
+# adding or changing one architecture rebuilds only that architecture's kernels.
+#
+# rocBLAS builds Tensile with SEPARATE_ARCHITECTURES + LAZY_LIBRARY_LOADING, which
+# gives one self-contained lib/rocblas/library/<gfx>/ directory per architecture
+# (its own TensileLibrary_lazy_<gfx>.dat index plus code objects). In a shared
+# build the kernels are not linked into librocblas.so; it opens that directory by
+# path at runtime. The join is therefore a plain directory merge with no relink:
+# librocblas.so, headers and CMake files are built once for the first
+# architecture and every other architecture's shard directory is copied in.
+# Other layouts (single architecture, no Tensile, non-lazy) use the base build.
+#
+# Overrides (e.g. rocblas.override { buildTests = false; }) are forwarded to
+# ./base.nix; its passthru reports the effective settings.
 {
   lib,
   clr,
   rocblas_base,
-  buildTensile ? true,
-  buildTests ? true,
-  buildBenchmarks ? true,
-  tensileSepArch ? true,
-  tensileLazyLib ? true,
-  withHipBlasLt ? true,
-  gpuTargets ? (clr.localGpuTargets or clr.gpuTargets),
   ...
 }@args:
 
 let
   base = rocblas_base.override (
-    builtins.removeAttrs args [ "rocblas_base" ]
-    // {
-      inherit
-        buildTensile
-        buildTests
-        buildBenchmarks
-        tensileSepArch
-        tensileLazyLib
-        withHipBlasLt
-        gpuTargets
-        ;
-    }
+    builtins.removeAttrs args [
+      "lib"
+      "clr"
+      "rocblas_base"
+    ]
   );
+  inherit (base.passthru)
+    buildTensile
+    tensileSepArch
+    tensileLazyLib
+    gpuTargets
+    ;
   archList = gpuTargets;
   headArch = lib.head archList;
   tailArchs = lib.drop 1 archList;
   shardTensile = buildTensile && tensileSepArch && tensileLazyLib && lib.length archList > 1;
 
-  # Each shard supplies a self-contained lazy Tensile library for one architecture.
-  # Shared build dependencies can still invalidate shards for unchanged targets.
+  # One architecture's lazy Tensile library; everything else is dropped.
   mkTensileShard =
     arch:
     (base.override {
@@ -80,8 +85,11 @@ else
       inherit tensileShards;
       disallowedReferences = tensileShards;
 
-      # Merge the lazy libraries and remove embedded shard paths from ELF metadata.
-      # disallowedReferences prevents private shards from entering the runtime closure.
+      # Merge the shard directories, then strip the shard store path that Tensile
+      # embeds in one code object's ELF metadata per architecture. It is not
+      # load-bearing (the unsplit build embeds its own $out in the same place),
+      # and remove-references-to keeps the ELF layout. disallowedReferences
+      # keeps the private shards out of consumers' closures.
       postInstall = (old.postInstall or "") + ''
         for shard in $tensileShards; do
           cp -r --no-preserve=mode "$shard/lib/rocblas/library/"* "$out/lib/rocblas/library/"

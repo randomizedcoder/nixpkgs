@@ -187,6 +187,13 @@ stdenv.mkDerivation (finalAttrs: {
     '';
 
   passthru = {
+    # Read by ./default.nix to decide whether the build can be sharded.
+    inherit
+      buildTensile
+      tensileSepArch
+      tensileLazyLib
+      gpuTargets
+      ;
     amdgpu_targets = gpuTargets';
     updateScript = rocmUpdateScript { inherit finalAttrs; };
   };
