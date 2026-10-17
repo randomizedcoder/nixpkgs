@@ -161,7 +161,6 @@ let
       enabled = !miOpenReqLibsOnly;
       targets = [
         "device_gemm_universal_reduce_instance"
-        "device_gemm_universal_streamk_instance"
       ];
     };
     gemm_other1 = {
@@ -189,7 +188,6 @@ let
         "device_gemm_multiply_add_instance"
         "device_gemm_reduce_instance"
         "device_gemm_splitk_instance"
-        "device_gemm_streamk_instance"
       ];
     };
     pool = {
@@ -253,11 +251,19 @@ let
         makeTargets = targets;
         preBuild = ''
           echo "Building ${part}"
-          # CMake omits layouts and data types excluded by the package configuration.
+          # CMake only generates the targets the configured GPU targets and
+          # MIOPEN_REQ_LIBS_ONLY select; build those. A target missing from the
+          # source is a stale entry (renamed or removed upstream): fail, rather
+          # than let the final build silently compile it in one unsplit step.
           partTargets=()
           for target in $makeTargets; do
             if grep -q "^$target:" Makefile; then
               partTargets+=("$target")
+            elif grep -rqsE "add_instance_library\($target([[:space:])]|$)" ../library/src/tensor_operation_instance; then
+              echo "CK part ${part}: $target not configured, skipping"
+            else
+              echo "CK part ${part}: $target is not defined in the CK source" >&2
+              exit 1
             fi
           done
           if (( ''${#partTargets[@]} == 0 )); then
@@ -276,7 +282,12 @@ let
         # So, bodge. Otherwise you end up having to build all of ROCm with a low core limit when
         # it's only this package that has trouble.
         preConfigure = (old.preConfigure or "") + ''
-          # Avoid embedding a reference to the part in compressed device objects.
+          # clang 24 forwards NIX_LDFLAGS to the HIP device linker, so the
+          # cc-wrapper's "-rpath $out/lib" lands in each part's compressed,
+          # integrity-checked .hip_fatbin. It cannot be scrubbed afterwards, and
+          # once the .o files are copied into the final build it becomes a
+          # disallowed reference to the part. The parts only emit relocatable
+          # objects, so drop the self-rpath.
           for _v in NIX_LDFLAGS ''${!NIX_LDFLAGS_*}; do
             printf -v "$_v" '%s' "$(sed "s| *-rpath $out/lib||g" <<< "''${!_v-}")"
             export "$_v"
