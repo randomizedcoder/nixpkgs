@@ -261,11 +261,21 @@ goBuild (finalAttrs: {
       # (cuda_v12 / cuda_v13 / rocm_v7_1 / rocm_v7_2 / vulkan / cuda_jetpack*).
       rocmMajorVersion = lib.versions.major rocmPackages.clr.version;
       rocmMinorVersion = lib.versions.minor rocmPackages.clr.version;
+      # cmake/local.cmake only knows rocm_v7_1 (Windows) and rocm_v7_2 (Linux).
+      # The label is an upstream interface tag, not the toolchain version: the
+      # runner links whatever ROCm is in buildInputs. Map ROCm >= 8 to
+      # rocm_v7_2 instead of failing with "Unknown ROCm backend".
+      # TODO: drop once ollama gains a ROCm 10 preset upstream.
+      rocmLinuxBackend =
+        if lib.versionAtLeast rocmMajorVersion "8" then
+          "rocm_v7_2"
+        else
+          "rocm_v${rocmMajorVersion}_${rocmMinorVersion}";
       llamaBackend =
         if enableCuda then
           "cuda_v${cudaMajorVersion}"
         else if enableRocm then
-          "rocm_v${rocmMajorVersion}_${rocmMinorVersion}"
+          rocmLinuxBackend
         else if enableVulkan then
           "vulkan"
         else
