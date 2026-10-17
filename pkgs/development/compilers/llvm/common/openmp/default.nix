@@ -24,6 +24,11 @@
 
 assert lib.assertMsg (ompdGdbSupport -> ompdSupport) "OMPD GDB support requires OMPD support!";
 
+let
+  # LLVM 23 removed the standalone OpenMP build; use the runtimes entry point.
+  # TODO: drop the version guards on staging; they keep LLVM < 23 unchanged.
+  useRuntimesBuild = lib.versionAtLeast release_version "23";
+in
 stdenv.mkDerivation (finalAttrs: {
   pname = "openmp";
   inherit version;
@@ -45,6 +50,15 @@ stdenv.mkDerivation (finalAttrs: {
       src;
 
   sourceRoot = "${finalAttrs.src.name}/openmp";
+
+  # Configure from runtimes/; the build writes generated headers into openmp/.
+  ${if useRuntimesBuild then "postUnpack" else null} = ''
+    chmod u+w ${finalAttrs.src.name}
+    cp -r --no-preserve=mode ${monorepoSrc}/runtimes ${monorepoSrc}/third-party ${finalAttrs.src.name}
+    mkdir ${finalAttrs.src.name}/llvm
+    cp -r --no-preserve=mode ${monorepoSrc}/llvm/cmake ${finalAttrs.src.name}/llvm
+    sourceRoot=${finalAttrs.src.name}/runtimes
+  '';
 
   outputs = [
     "out"
@@ -89,6 +103,10 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeFeature "OPT_TOOL" "${llvm}/bin/opt")
     (lib.cmakeFeature "LINK_TOOL" "${llvm}/bin/llvm-link")
   ]
+  ++ lib.optionals useRuntimesBuild [
+    (lib.cmakeFeature "LLVM_ENABLE_RUNTIMES" "openmp")
+    (lib.cmakeBool "LLVM_INCLUDE_TESTS" false)
+  ]
   ++ devExtraCmakeFlags;
 
   doCheck = false;
@@ -96,7 +114,7 @@ stdenv.mkDerivation (finalAttrs: {
   checkTarget = "check-openmp";
 
   preCheck = ''
-    patchShebangs ../tools/archer/tests/deflake.bash
+    patchShebangs ${if useRuntimesBuild then "../../openmp" else ".."}/tools/archer/tests/deflake.bash
   '';
 
   __structuredAttrs = true;
