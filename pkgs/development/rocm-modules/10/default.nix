@@ -105,6 +105,8 @@ let
 
       rocprim = self.callPackage ./rocprim { };
 
+      rocsparse = self.callPackage ./rocsparse { };
+
       rocthrust = self.callPackage ./rocthrust { };
 
       rocrand = self.callPackage ./rocrand { };
@@ -121,6 +123,10 @@ let
 
       hipcub = self.callPackage ./hipcub { };
 
+      hipsparse = self.callPackage ./hipsparse { };
+
+      hipfort = self.callPackage ./hipfort { };
+
       hipfft = self.callPackage ./hipfft { };
 
       tensile = pyPackages.callPackage ./tensile {
@@ -136,9 +142,21 @@ let
       rocblas_base = self.callPackage ./rocblas/base.nix { };
       rocblas = self.callPackage ./rocblas { };
 
+      rocsolver = self.callPackage ./rocsolver { };
+
+      rocwmma = self.callPackage ./rocwmma { };
+
+      rocalution = self.callPackage ./rocalution { };
+
+      hipsolver = self.callPackage ./hipsolver { };
+
       hipblas-common = self.callPackage ./hipblas-common { };
 
+      hipblas = self.callPackage ./hipblas { };
+
       hipblaslt = self.callPackage ./hipblaslt { };
+
+      hipsparselt = self.callPackage ./hipsparselt { };
 
       half = self.callPackage ./half { };
 
