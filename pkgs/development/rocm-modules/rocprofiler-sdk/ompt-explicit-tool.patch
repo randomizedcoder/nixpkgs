@@ -7,6 +7,10 @@ requested through ROCP_TOOL_LIBRARIES, a configure symbol, or force_configure.
 
 Keep the separate glog initialization guard for early explicit tool loading.
 
+OpenMP queries ompt_start_tool only once, at startup, so attaching a
+profiler to an already running process cannot enable OMPT tracing; the
+other services are unaffected.
+
 --- a/source/lib/rocprofiler-sdk/registration.cpp
 +++ b/source/lib/rocprofiler-sdk/registration.cpp
 @@ -86,6 +86,7 @@
