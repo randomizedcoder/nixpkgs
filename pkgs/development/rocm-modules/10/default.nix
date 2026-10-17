@@ -103,11 +103,25 @@ let
 
       rocr-debug-agent = self.callPackage ./rocr-debug-agent { };
 
+      rocprim = self.callPackage ./rocprim { };
+
+      rocthrust = self.callPackage ./rocthrust { };
+
+      rocrand = self.callPackage ./rocrand { };
+
+      hiprand = self.callPackage ./hiprand { };
+
+      rocfft = self.callPackage ./rocfft { };
+
       mscclpp = self.callPackage ../mscclpp { };
 
       rccl = self.callPackage ./rccl { };
 
       rocshmem = self.callPackage ./rocshmem { };
+
+      hipcub = self.callPackage ./hipcub { };
+
+      hipfft = self.callPackage ./hipfft { };
 
       half = self.callPackage ./half { };
 
