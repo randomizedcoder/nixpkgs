@@ -1,0 +1,75 @@
+Subject: [PATCH] Avoid unsolicited OMPT initialization
+
+OpenMP can discover the SDK through a transitive dependency during library
+initialization. Loading profiler clients from that entry point can reenter
+OpenMP initialization and deadlock. Decline the tool unless a client was
+requested through ROCP_TOOL_LIBRARIES, a configure symbol, or force_configure.
+
+Keep the separate glog initialization guard for early explicit tool loading.
+
+OpenMP queries ompt_start_tool only once, at startup, so attaching a
+profiler to an already running process cannot enable OMPT tracing; the
+other services are unaffected.
+
+--- a/source/lib/rocprofiler-sdk/registration.cpp
++++ b/source/lib/rocprofiler-sdk/registration.cpp
+@@ -86,6 +86,7 @@
+ #include <cctype>
+ #include <cstddef>
+ #include <cstdint>
++#include <cstdlib>
+ #include <fstream>
+ #include <iostream>
+ #include <limits>
+@@ -1039,6 +1040,18 @@
+     return _v;
+ }
+ 
++static std::atomic<bool> forced_configure_requested{false};
++
++bool
++is_tool_requested()
++{
++    if(forced_configure_requested.load(std::memory_order_acquire)) return true;
++    const auto* tools = secure_getenv("ROCP_TOOL_LIBRARIES");
++    return (tools && *tools) || rocprofiler_configure ||
++           dlsym(RTLD_DEFAULT, "rocprofiler_configure") ||
++           dlsym(RTLD_NEXT, "rocprofiler_configure");
++}
++
+ int
+ get_init_status()
+ {
+@@ -1234,6 +1247,8 @@
+     rocprofiler::registration::init_logging();
+ 
+     if(rocprofiler::registration::get_fini_status() != 0) return ROCPROFILER_STATUS_ERROR_FINALIZED;
++
++    rocprofiler::registration::forced_configure_requested.store(true, std::memory_order_release);
+ 
+     ROCP_INFO << "forcing rocprofiler configuration";
+ 
+--- a/source/lib/rocprofiler-sdk/registration.hpp
++++ b/source/lib/rocprofiler-sdk/registration.hpp
+@@ -50,6 +50,9 @@
+ init_logging();
+ 
++bool
++is_tool_requested();
++
+ // initialize the clients
+ void
+ initialize();
+ 
+--- a/source/lib/rocprofiler-sdk/ompt.cpp
++++ b/source/lib/rocprofiler-sdk/ompt.cpp
+@@ -267,6 +267,9 @@
+ ompt_start_tool_result_t*
+ ompt_start_tool(unsigned int omp_version, const char* runtime_version)
+ {
++    // OpenMP may discover this symbol through an unrelated SDK dependency.
++    if(!::rocprofiler::registration::is_tool_requested()) return nullptr;
++
+     if(rocprofiler_glog_vmodule_flag == nullptr) return nullptr;
+ 
+     ::rocprofiler::registration::init_logging();
