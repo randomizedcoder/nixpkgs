@@ -63,6 +63,10 @@ let
         inherit (self) rocmUpdateScript;
       };
 
+      aqlprofile = self.callPackage ./aqlprofile { };
+
+      rdc = self.callPackage ./rdc { };
+
       rocm-docs-core = python3Packages.callPackage ../rocm-docs-core { };
 
       hip-common = self.callPackage ./hip-common { };
@@ -78,11 +82,32 @@ let
 
       # hsakmt was merged into rocm-runtime
       hsakmt = self.rocm-runtime;
+
+      rocprofiler = self.callPackage ./rocprofiler {
+        inherit (llvm) clang;
+      };
       rocprofiler-register = self.callPackage ./rocprofiler-register {
         inherit (llvm) clang;
       };
+      rocprofiler-sdk = self.callPackage ./rocprofiler-sdk { };
+
+      rocprof-compute-viewer = self.callPackage ../rocprof-compute-viewer { };
+
+      rocprof-trace-decoder = self.callPackage ./rocprof-trace-decoder { };
 
       roctracer = self.callPackage ./roctracer { };
+
+      rocgdb = self.callPackage ./rocgdb { };
+
+      rocdbgapi = self.callPackage ./rocdbgapi { };
+
+      rocr-debug-agent = self.callPackage ./rocr-debug-agent { };
+
+      mscclpp = self.callPackage ../mscclpp { };
+
+      rccl = self.callPackage ./rccl { };
+
+      rocshmem = self.callPackage ./rocshmem { };
 
       half = self.callPackage ./half { };
 
